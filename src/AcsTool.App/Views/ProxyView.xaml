@@ -1,0 +1,50 @@
+<UserControl x:Class="AcsTool.App.Views.ProxyView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:v="clr-namespace:AcsTool.App.Views">
+  <DockPanel>
+    <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" Padding="4">
+      <StackPanel>
+        <WrapPanel IsEnabled="{Binding CanEdit}" ToolTip="Changes apply on the next Start">
+          <Label Content="Listen" />
+          <ComboBox Width="130" IsEditable="True" ItemsSource="{Binding BindAddressChoices}"
+                    Text="{Binding BindAddress, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+          <Label Content="Port" />
+          <TextBox Width="60" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+          <Label Content="→ Upstream" />
+          <TextBox Width="360" Text="{Binding UpstreamUrl, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+          <Label Content="TLS" />
+          <ComboBox Width="110" ItemsSource="{Binding TlsModes}" SelectedItem="{Binding TlsMode}" />
+          <Label Content="Cookies" />
+          <ComboBox Width="120" ItemsSource="{Binding CookieModes}" SelectedItem="{Binding CookieMode}" />
+        </WrapPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+          <Button Content="{Binding StartStopText}" Command="{Binding StartStopCommand}" FontWeight="SemiBold" MinWidth="90" ToolTip="F5" />
+          <TextBlock Text="{Binding StateText}" VerticalAlignment="Center" Margin="8,0" />
+          <ItemsControl ItemsSource="{Binding BoundUrls}" VerticalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Button Content="{Binding}" ContentStringFormat="⧉ {0}" Click="CopyUrl_Click" Tag="{Binding}" ToolTip="Copy URL for the CPE's ACS URL setting" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="5*" MinWidth="300" />
+        <ColumnDefinition Width="5" />
+        <ColumnDefinition Width="6*" MinWidth="300" />
+      </Grid.ColumnDefinitions>
+      <v:SessionFeedView x:Name="Feed" DataContext="{Binding Feed}" />
+      <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
+      <v:SessionDetailView Grid.Column="2" DataContext="{Binding Feed.Detail}" />
+    </Grid>
+  </DockPanel>
+</UserControl>

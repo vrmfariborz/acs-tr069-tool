@@ -1,0 +1,42 @@
+<UserControl x:Class="AcsTool.App.Views.SessionFeedView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:feed="clr-namespace:AcsTool.Presentation.Feed;assembly=AcsTool.Presentation">
+  <DockPanel>
+    <WrapPanel DockPanel.Dock="Top" Margin="2">
+      <Label Content="Filter" />
+      <TextBox x:Name="FilterBox" Width="180" Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged, Delay=250}" ToolTip="Device key, IP, method or error text" />
+      <Label Content="Outcome" />
+      <ComboBox Width="110" ItemsSource="{x:Static feed:SessionFeedViewModel.OutcomeFilters}" SelectedItem="{Binding OutcomeFilter}" />
+      <ToggleButton Content="⏸ Pause" IsChecked="{Binding IsPaused}" Margin="2" Padding="8,2" />
+      <Button Content="⟲ Clear" Command="{Binding ClearCommand}" />
+      <CheckBox Content="Auto-scroll" IsChecked="{Binding AutoScroll}" VerticalAlignment="Center" Margin="6,0" />
+      <TextBlock VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" Margin="6,0">
+        <Run Text="{Binding TotalCount, Mode=OneWay}" /><Run Text=" sessions" />
+      </TextBlock>
+    </WrapPanel>
+    <DataGrid x:Name="Grid" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}" IsReadOnly="True"
+              RowDetailsVisibilityMode="Visible">
+      <DataGrid.RowStyle>
+        <Style TargetType="DataGridRow">
+          <Setter Property="Background" Value="{Binding Outcome, Converter={StaticResource OutcomeToBrush}}" />
+        </Style>
+      </DataGrid.RowStyle>
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="90" />
+        <DataGridTextColumn Header="Device" Binding="{Binding Device}" Width="150" />
+        <DataGridTextColumn Header="Client" Binding="{Binding Client}" Width="140" />
+        <DataGridTextColumn Header="Events" Binding="{Binding Events}" Width="90" />
+        <DataGridTextColumn Header="Ex" Binding="{Binding ExchangeCount}" Width="35" />
+        <DataGridTextColumn Header="Outcome" Binding="{Binding OutcomeBadge}" Width="130" />
+        <DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="*" />
+      </DataGrid.Columns>
+      <DataGrid.RowDetailsTemplate>
+        <DataTemplate>
+          <TextBlock Text="{Binding ErrorText}" Foreground="{StaticResource ErrorBrush}" Margin="24,0,0,2"
+                     Visibility="{Binding ErrorText, Converter={StaticResource NullToVisibility}}" />
+        </DataTemplate>
+      </DataGrid.RowDetailsTemplate>
+    </DataGrid>
+  </DockPanel>
+</UserControl>

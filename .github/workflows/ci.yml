@@ -19,5 +19,8 @@ jobs:
       - run: dotnet build AcsTool.sln -c Release
       - run: ./publish.ps1
         shell: pwsh
-      - run: ./out/win-x64/AcsTool.exe --smoke-exit
+      - name: smoke start (--smoke-exit)
         shell: pwsh
+        run: |
+          $p = Start-Process -FilePath ./out/win-x64/AcsTool.exe -ArgumentList '--smoke-exit' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "AcsTool --smoke-exit failed with exit code $($p.ExitCode)" }

@@ -1,0 +1,76 @@
+<Window x:Class="AcsTool.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings" Width="640" Height="560" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="8">
+      <Button Content="Restore defaults" Command="{Binding RestoreDefaultsCommand}" />
+      <Button Content="Cancel" Click="Cancel_Click" IsCancel="True" />
+      <Button Content="Save" Click="Save_Click" IsDefault="True" FontWeight="SemiBold" />
+    </StackPanel>
+    <TextBlock DockPanel.Dock="Bottom" Margin="8,0" Foreground="{StaticResource MutedBrush}" Text="Proxy changes apply on the next Start." />
+    <TabControl Margin="4" TabStripPlacement="Left">
+      <TabItem Header="Proxy">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <Grid Margin="6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="190" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+              <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+              <RowDefinition /><RowDefinition />
+            </Grid.RowDefinitions>
+            <Label Content="Bind address" />
+            <TextBox Grid.Column="1" Text="{Binding BindAddress, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+            <Label Grid.Row="1" Content="Port" />
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+            <Label Grid.Row="2" Content="Upstream ACS URL" />
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding UpstreamUrl, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+            <Label Grid.Row="3" Content="Path mode" />
+            <ComboBox Grid.Row="3" Grid.Column="1" ItemsSource="{Binding PathModes}" SelectedItem="{Binding PathMode}" />
+            <Label Grid.Row="4" Content="Fixed upstream path" />
+            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding FixedUpstreamPath, UpdateSourceTrigger=PropertyChanged}" />
+            <Label Grid.Row="5" Content="Host header" />
+            <ComboBox Grid.Row="5" Grid.Column="1" ItemsSource="{Binding HostHeaderModes}" SelectedItem="{Binding HostHeader}" />
+            <Label Grid.Row="6" Content="Cookie mode" />
+            <ComboBox Grid.Row="6" Grid.Column="1" ItemsSource="{Binding CookieModes}" SelectedItem="{Binding CookieMode}" />
+            <CheckBox Grid.Row="7" Grid.Column="1" Content="Strip Set-Cookie Domain" IsChecked="{Binding StripCookieDomain}" Margin="2" />
+            <CheckBox Grid.Row="8" Grid.Column="1" Content="Strip Set-Cookie Secure when the CPE leg is HTTP" IsChecked="{Binding StripCookieSecureOnHttp}" Margin="2" />
+            <CheckBox Grid.Row="9" Grid.Column="1" Content="Add X-Forwarded-For" IsChecked="{Binding AddXForwardedFor}" Margin="2" />
+            <Label Grid.Row="10" Content="Upstream failure" />
+            <ComboBox Grid.Row="10" Grid.Column="1" ItemsSource="{Binding FailureModes}" SelectedItem="{Binding FailureMode}" />
+            <Label Grid.Row="11" Content="Connect timeout (s)" />
+            <TextBox Grid.Row="11" Grid.Column="1" Text="{Binding ConnectTimeoutSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+            <Label Grid.Row="12" Content="Request timeout (s)" />
+            <TextBox Grid.Row="12" Grid.Column="1" Text="{Binding RequestTimeoutSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+            <Label Grid.Row="13" Content="Session idle timeout (s)" />
+            <TextBox Grid.Row="13" Grid.Column="1" Text="{Binding SessionIdleTimeoutSeconds, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+            <CheckBox Grid.Row="14" Grid.Column="1" Content="Use the system proxy for upstream" IsChecked="{Binding UseSystemProxy}" Margin="2" />
+            <CheckBox Grid.Row="15" Grid.Column="1" Content="Start the proxy on launch" IsChecked="{Binding StartOnLaunch}" Margin="2" />
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="Capture">
+        <Grid Margin="6">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="190" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition />
+          </Grid.RowDefinitions>
+          <Label Content="Max sessions" />
+          <TextBox Grid.Column="1" Text="{Binding MaxSessions, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+          <Label Grid.Row="1" Content="Max captured body (KiB)" />
+          <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding MaxCapturedBodyKiB, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+          <Label Grid.Row="2" Content="Capture budget (MiB)" />
+          <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding CaptureBudgetMiB, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+          <Label Grid.Row="3" Content="Feed max items" />
+          <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding MaxFeedItems, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+        </Grid>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>
