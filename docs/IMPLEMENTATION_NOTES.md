@@ -17,7 +17,10 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 ### Build and tooling
 - `global.json` uses `rollForward: latestMajor`. A newer installed SDK can still build the project. The TFM stays net8.0 through `AcsToolTfm`.
 - NSubstitute is not used; the tests rely on hand-written fakes (`FakeAcs`, `FakeTransport`, `RecordingSink`, TestKit). AvalonEdit is not used either; the MVP raw and pretty views are read-only monospace `TextBox`es. Reason: fewer dependencies, and the fakes were simpler and more deterministic.
-- A few CA rules are suppressed in `.editorconfig`. Examples are CA1848 (LoggerMessage delegates), CA2007 (ConfigureAwait in an app) and CA1711/CA1716 naming on domain types. Reason: they add noise for this app type. All other `latest-recommended` rules stay on, and the build has 0 warnings.
+- Some CA rules are suppressed in `.editorconfig`:
+  - Product code: CA2007 (ConfigureAwait; the library convention is enforced by review), CA1848/CA1873 (LoggerMessage delegates), and CA1707/CA1711/CA1716/CA1720 (naming of CWMP domain types such as `Fault`, `Event`, `...Stream`).
+  - Tests only: CA1707, CA2007, CA1001, CA1861, CA2000, CA5394.
+  - Reason: these rules are noise for this code base. All other `latest-recommended` rules stay on, and the build has 0 warnings.
 - `build.sh` excludes `Category=Perf` tests by default (`--include-perf` runs them). That is why Core.Tests runs 302 tests through the script and 303 through plain `dotnet test`.
 - The CI Windows smoke step uses `Start-Process -Wait -PassThru`. Reason: `AcsTool.exe` is a WinExe, and PowerShell neither waits for it nor checks its exit code.
 
