@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+  <Header>
+    <ID xmlns="urn:dslforum-org:cwmp-1-1">42</ID>
+  </Header>
+  <Body>
+    <Inform xmlns="urn:dslforum-org:cwmp-1-1">
+      <DeviceId><Manufacturer>NoPrefix Inc</Manufacturer><OUI>112233</OUI><ProductClass>NP</ProductClass><SerialNumber>NP-9</SerialNumber></DeviceId>
+      <Event><EventStruct><EventCode>2 PERIODIC</EventCode><CommandKey></CommandKey></EventStruct></Event>
+      <MaxEnvelopes>1</MaxEnvelopes>
+      <CurrentTime>2026-10-28T20:00:00Z</CurrentTime>
+      <RetryCount>0</RetryCount>
+      <ParameterList>
+        <ParameterValueStruct><Name>InternetGatewayDevice.DeviceInfo.SoftwareVersion</Name><Value>1.0</Value></ParameterValueStruct>
+      </ParameterList>
+    </Inform>
+  </Body>
+</Envelope>

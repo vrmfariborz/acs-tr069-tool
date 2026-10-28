@@ -1,0 +1,21 @@
+<soap-env:Envelope xmlns:soap-env="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns:cwmp="urn:dslforum-org:cwmp-1-0">
+  <soap-env:Header><cwmp:ID soap-env:mustUnderstand="1">acs-7f3b</cwmp:ID></soap-env:Header>
+  <soap-env:Body>
+    <soap-env:Fault>
+      <faultcode>Client</faultcode>
+      <faultstring>CWMP fault</faultstring>
+      <detail>
+        <cwmp:Fault>
+          <FaultCode>9003</FaultCode>
+          <FaultString>Invalid arguments</FaultString>
+          <SetParameterValuesFault>
+            <ParameterName>InternetGatewayDevice.DeviceInfo.SoftwareVersion</ParameterName>
+            <FaultCode>9008</FaultCode>
+            <FaultString>Attempt to set a non-writable parameter</FaultString>
+          </SetParameterValuesFault>
+        </cwmp:Fault>
+      </detail>
+    </soap-env:Fault>
+  </soap-env:Body>
+</soap-env:Envelope>

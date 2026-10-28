@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap-env:Envelope xmlns:soap-env="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns:soap-enc="http://schemas.xmlsoap.org/soap/encoding/"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:cwmp="urn:dslforum-org:cwmp-1-0">
+  <soap-env:Header><cwmp:ID soap-env:mustUnderstand="1">9</cwmp:ID></soap-env:Header>
+  <soap-env:Body>
+    <cwmp:Inform>
+      <DeviceId><Manufacturer>Acme</Manufacturer><OUI>00D09E</OUI><ProductClass>IGD</ProductClass><SerialNumber>MISMATCH1</SerialNumber></DeviceId>
+      <Event soap-enc:arrayType="cwmp:EventStruct[3]">
+        <EventStruct><EventCode>1 BOOT</EventCode><CommandKey/></EventStruct>
+      </Event>
+      <MaxEnvelopes>1</MaxEnvelopes>
+      <CurrentTime>not-a-time</CurrentTime>
+      <RetryCount>0</RetryCount>
+      <ParameterList soap-enc:arrayType="cwmp:ParameterValueStruct[1]">
+        <ParameterValueStruct><Name>InternetGatewayDevice.DeviceInfo.SoftwareVersion</Name><Value xsi:type="xsd:string">1</Value></ParameterValueStruct>
+        <ParameterValueStruct><Name>InternetGatewayDevice.DeviceInfo.HardwareVersion</Name><Value xsi:type="xsd:string">2</Value></ParameterValueStruct>
+      </ParameterList>
+    </cwmp:Inform>
+  </soap-env:Body>
+</soap-env:Envelope>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap-env:Envelope
+    xmlns:soap-env="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns:soap-enc="http://schemas.xmlsoap.org/soap/encoding/"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:cwmp="urn:dslforum-org:cwmp-1-0">
+  <soap-env:Header>
+    <cwmp:ID soap-env:mustUnderstand="1">1001</cwmp:ID>
+  </soap-env:Header>
+  <soap-env:Body>
+    <cwmp:Inform>
+      <DeviceId>
+        <Manufacturer>Acme Networks</Manufacturer>
+        <OUI>00D09E</OUI>
+        <ProductClass>IGD</ProductClass>
+        <SerialNumber>SN123456789</SerialNumber>
+      </DeviceId>
+      <Event soap-enc:arrayType="cwmp:EventStruct[2]">
+        <EventStruct>
+          <EventCode>1 BOOT</EventCode>
+          <CommandKey></CommandKey>
+        </EventStruct>
+        <EventStruct>
+          <EventCode>M Reboot</EventCode>
+          <CommandKey>rb-20261028-01</CommandKey>
+        </EventStruct>
+      </Event>
+      <MaxEnvelopes>1</MaxEnvelopes>
+      <CurrentTime>2026-10-28T23:10:04+03:30</CurrentTime>
+      <RetryCount>0</RetryCount>
+      <ParameterList soap-enc:arrayType="cwmp:ParameterValueStruct[8]">
+        <ParameterValueStruct>
+          <Name>InternetGatewayDevice.DeviceSummary</Name>
+          <Value xsi:type="xsd:string">InternetGatewayDevice:1.4[](Baseline:2, EthernetLAN:1, WiFiLAN:1, Time:1)</Value>
+        </ParameterValueStruct>
+        <ParameterValueStruct>
+          <Name>InternetGatewayDevice.DeviceInfo.SpecVersion</Name>
+          <Value xsi:type="xsd:string">1.0</Value>
+        </ParameterValueStruct>
+        <ParameterValueStruct>
+          <Name>InternetGatewayDevice.DeviceInfo.HardwareVersion</Name>
+          <Value xsi:type="xsd:string">HW-1.0</Value>
+        </ParameterValueStruct>
+        <ParameterValueStruct>
+          <Name>InternetGatewayDevice.DeviceInfo.SoftwareVersion</Name>
+          <Value xsi:type="xsd:string">FW-2.3.4</Value>
+        </ParameterValueStruct>
+        <ParameterValueStruct>
+          <Name>InternetGatewayDevice.DeviceInfo.ProvisioningCode</Name>
+          <Value xsi:type="xsd:string"></Value>
+        </ParameterValueStruct>
+        <ParameterValueStruct>
+          <Name>InternetGatewayDevice.ManagementServer.ConnectionRequestURL</Name>
+          <Value xsi:type="xsd:string">http://192.168.1.50:7547/cr/SN123456789</Value>
+        </ParameterValueStruct>
+        <ParameterValueStruct>
+          <Name>InternetGatewayDevice.ManagementServer.ParameterKey</Name>
+          <Value xsi:type="xsd:string"></Value>
+        </ParameterValueStruct>
+        <ParameterValueStruct>
+          <Name>InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress</Name>
+          <Value xsi:type="xsd:string">198.51.100.23</Value>
+        </ParameterValueStruct>
+      </ParameterList>
+    </cwmp:Inform>
+  </soap-env:Body>
+</soap-env:Envelope>

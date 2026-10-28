@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope" xmlns:cwmp="urn:dslforum-org:cwmp-1-0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <env:Header><cwmp:ID env:mustUnderstand="true">5</cwmp:ID></env:Header>
+  <env:Body>
+    <cwmp:Inform>
+      <DeviceId><Manufacturer>Odd</Manufacturer><OUI>ABCDEF</OUI><ProductClass>X</ProductClass><SerialNumber>ODD1</SerialNumber></DeviceId>
+      <Event><EventStruct><EventCode>6 CONNECTION REQUEST</EventCode><CommandKey/></EventStruct></Event>
+      <MaxEnvelopes>1</MaxEnvelopes>
+      <CurrentTime>2026-10-28T20:00:00Z</CurrentTime>
+      <RetryCount>0</RetryCount>
+      <ParameterList/>
+    </cwmp:Inform>
+  </env:Body>
+</env:Envelope>

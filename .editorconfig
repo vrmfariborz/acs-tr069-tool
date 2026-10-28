@@ -21,6 +21,11 @@ dotnet_diagnostic.CA2007.severity = none
 # LoggerMessage source-gen is a v1 polish item; plain ILogger calls are acceptable for the MVP
 dotnet_diagnostic.CA1848.severity = none
 dotnet_diagnostic.CA1873.severity = none
+# Names mandated by the plan / CWMP spec (CwmpVersion.V1_0, ParameterAttribute, XsdTypes.String, ISessionStore.Get, IRandom.Next)
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1711.severity = none
+dotnet_diagnostic.CA1716.severity = none
+dotnet_diagnostic.CA1720.severity = none
 
 [tests/**.cs]
 # Test names follow Method_Scenario_Expected (plan §5.2)
