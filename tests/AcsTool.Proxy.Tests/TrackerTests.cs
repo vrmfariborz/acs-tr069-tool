@@ -184,7 +184,9 @@ public class TrackerTests
         var s = Resolve(InformA, "c1");
         Assert.Null(CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Empty, Resp(200, [1]), CwmpMessageKind.GetParameterValues, []));
         Assert.Null(CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.GetParameterValuesResponse, Resp(204), null, []));
-        _time.Advance(CpeSessionTracker.SweepInterval);
+        _time.Advance(CpeSessionTracker.SweepInterval); // 1 s: still within the 2 s grace
+        Assert.Equal(1, _tracker.ActiveCount);
+        _time.Advance(CpeSessionTracker.CompletionGrace);
         Assert.Equal(0, _tracker.ActiveCount);
         Assert.Equal(SessionOutcome.Completed, _store.Get(s.SessionId)!.Outcome);
     }

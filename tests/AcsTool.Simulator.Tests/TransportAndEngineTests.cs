@@ -193,7 +193,8 @@ public class EndToEndTests
         await using var engine = Kit.Engine(store);
         var cpe = (await engine.StartProfileAsync(Kit.Profile($"http://127.0.0.1:{proxy.BoundPort}/acs"), sendBootNow: true, default)).Single();
 
-        Assert.True(await TestUtil.WaitUntilAsync(() => store.GetAll().Count(s => s.Ended is not null) == 2), "both sessions should end");
+        Assert.True(await TestUtil.WaitUntilAsync(() => store.GetAll().Count(s => s.Ended is not null) == 2, timeoutMs: 15_000), "both sessions should end");
+        // The simulator does not send a trailing empty POST, so the proxy completes its session via the 2 s grace sweep.
         Assert.Empty(acs.Violations);
         var sim = store.GetAll().Single(s => s.Source == SessionSource.Simulator);
         var prx = store.GetAll().Single(s => s.Source == SessionSource.Proxy);

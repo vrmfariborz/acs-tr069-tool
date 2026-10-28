@@ -31,7 +31,7 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
   - `ProxySession.CpeSentEmpty` records that the CPE has sent an empty POST.
   - When the ACS then answers a CPE response with an empty body, the session goes into `AwaitingFinalEmpty`.
   - A trailing empty POST ends the session at once.
-  - Otherwise the sweeper ends it as Completed/AcsFault/CpeFault after `CompletionGrace` = 2 s of idle time. The sweep runs every 5 s, so the UI can show "in progress" for up to about 7 s.
+  - Otherwise the sweeper ends it as Completed/AcsFault/CpeFault after `CompletionGrace` = 2 s of idle time. The sweeper runs every 1 s (the plan said 5 s; shortened for this rule), so the UI can show "in progress" for up to about 3 s.
 - The T2.5 acceptance test says "5 exchanges", but the flow it describes has 4 HTTP requests: Inform, empty, GPVResponse, empty. The test asserts those 4, in order.
 - Set-Cookie rewriting (strip `Domain`, rewrite `Path`) was pulled forward from M5. The Secure flag is stripped only when the CPE leg is HTTP and the upstream is HTTPS.
 - All four upstream TLS modes are implemented. Only `Strict` is exercised by tests; HTTPS tests are M6.
@@ -61,7 +61,7 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 ## Manual smoke checklist (Windows, T4.6)
 1. Run `AcsTool.exe`. On the Proxy tab, set listen port 7547 and the upstream URL of a local ACS, then Start. The status bar shows "Proxy running".
 2. On the Simulator tab, create a TR-098 profile with ACS URL `http://127.0.0.1:7547/acs`, save it, start it, and click "Send Inform now".
-3. The feed shows a Proxy session and a Simulator session for the same device, and both end Completed. A proxied session without a trailing empty POST completes within about 7 s.
+3. The feed shows a Proxy session and a Simulator session for the same device, and both end Completed. A proxied session without a trailing empty POST completes within about 3 s.
 4. Select a session. The Raw tab shows the XML, the Pretty toggle formats it, and Authorization is redacted until revealed.
 5. Close the window. The proxy and simulator stop, and the process exits within a few seconds.
 6. Run `AcsTool.exe --smoke-exit`. It exits with code 0.

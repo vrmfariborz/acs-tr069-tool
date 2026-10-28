@@ -15,7 +15,7 @@ namespace AcsTool.Proxy;
 /// </summary>
 public sealed class CpeSessionTracker : IAsyncDisposable
 {
-    public static readonly TimeSpan SweepInterval = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan SweepInterval = TimeSpan.FromSeconds(1);
     /// <summary>Idle time after which a session in <see cref="ProxySession.AwaitingFinalEmpty"/> is ended as completed.</summary>
     public static readonly TimeSpan CompletionGrace = TimeSpan.FromSeconds(2);
 
