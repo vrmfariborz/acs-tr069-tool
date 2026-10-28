@@ -60,7 +60,8 @@ public class ForwardingTests
         await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s
             .ExpectInform().RespondInformResponse()
             .ExpectEmpty().Send(new GetParameterValuesMessage(["InternetGatewayDevice.DeviceInfo."]))
-            .ExpectResponse<GetParameterValuesResponseMessage>().End204());
+            .ExpectResponse<GetParameterValuesResponseMessage>().End204()
+            .ExpectEmpty().End204());
         await using var h = await ProxyHarness.StartAsync(acs);
         using var client = ProxyHarness.CpeClient();
 
@@ -72,6 +73,9 @@ public class ForwardingTests
         var gpvResp = ProxyHarness.Soap(new GetParameterValuesResponseMessage([new ParameterValue("InternetGatewayDevice.DeviceInfo.SoftwareVersion", "1.0")]), id);
         using var r3 = await client.SendAsync(ProxyHarness.Post(h.Url(), gpvResp));
         Assert.Equal(HttpStatusCode.NoContent, r3.StatusCode);
+        Assert.Equal(1, h.Tracker.ActiveCount); // awaiting a possible trailing empty POST
+        using var r4 = await client.SendAsync(ProxyHarness.Post(h.Url(), null));
+        Assert.Equal(HttpStatusCode.NoContent, r4.StatusCode);
         Assert.Empty(acs.Violations);
 
         var s = await h.WaitForEndedAsync();
@@ -79,9 +83,10 @@ public class ForwardingTests
         Assert.Equal(SessionOutcome.Completed, s.Outcome);
         Assert.Equal(SessionSource.Proxy, s.Source);
         Assert.Equal("00D09E-SN1", s.DeviceId!.Key);
-        Assert.Equal(new[] { 1, 2, 3 }, s.Exchanges.Select(e => e.Seq));
-        Assert.Equal(new[] { CwmpMessageKind.Inform, CwmpMessageKind.Empty, CwmpMessageKind.GetParameterValuesResponse }, s.Exchanges.Select(e => e.RequestSummary.Kind));
-        Assert.Equal(new[] { 200, 200, 204 }, s.Exchanges.Select(e => e.Response!.StatusCode ?? 0));
+        Assert.Equal(new[] { 1, 2, 3, 4 }, s.Exchanges.Select(e => e.Seq));
+        Assert.Equal(new[] { CwmpMessageKind.Inform, CwmpMessageKind.Empty, CwmpMessageKind.GetParameterValuesResponse, CwmpMessageKind.Empty },
+            s.Exchanges.Select(e => e.RequestSummary.Kind));
+        Assert.Equal(new[] { 200, 200, 204, 204 }, s.Exchanges.Select(e => e.Response!.StatusCode ?? 0));
         Assert.All(s.Exchanges, e => Assert.NotNull(e.Timings.Total));
     }
 
@@ -316,5 +321,27 @@ public class ForwardingTests
         await Task.Delay(1200);
         h.Tracker.Sweep();
         Assert.Equal(SessionOutcome.Abandoned, (await h.WaitForEndedAsync()).Outcome);
+    }
+
+    [Fact]
+    public async Task CpeClosesWithoutTrailingEmpty_CompletedAfterGrace()
+    {
+        await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s
+            .ExpectInform().RespondInformResponse()
+            .ExpectEmpty().Send(new GetParameterValuesMessage(["InternetGatewayDevice.DeviceInfo."]))
+            .ExpectResponse<GetParameterValuesResponseMessage>().End204());
+        await using var h = await ProxyHarness.StartAsync(acs);
+        using var client = ProxyHarness.CpeClient();
+        (await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()))).Dispose();
+        using var r2 = await client.SendAsync(ProxyHarness.Post(h.Url(), null));
+        var id = ProxyHarness.IdOf(await r2.Content.ReadAsByteArrayAsync());
+        (await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Soap(new GetParameterValuesResponseMessage([]), id)))).Dispose();
+        h.Tracker.Sweep(); // within the grace period
+        Assert.Equal(1, h.Tracker.ActiveCount);
+        await Task.Delay(CpeSessionTracker.CompletionGrace + TimeSpan.FromMilliseconds(200));
+        h.Tracker.Sweep();
+        var s = await h.WaitForEndedAsync();
+        Assert.Equal(SessionOutcome.Completed, s.Outcome);
+        Assert.Equal(3, s.Exchanges.Count);
     }
 }

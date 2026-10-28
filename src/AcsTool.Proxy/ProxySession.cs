@@ -39,6 +39,12 @@ public sealed class ProxySession : IAsyncDisposable, IDisposable
     public CwmpMessageKind LastRequestKind { get; set; } = CwmpMessageKind.Empty;
     /// <summary>The CPE has sent an empty POST ("no more requests") and has not issued a new CPE request since.</summary>
     public bool CpeSentEmpty { get; set; }
+    /// <summary>
+    /// Both sides signalled "no more requests" but the CPE answered last (ACS sent empty to a CPE response after the CPE's empty POST).
+    /// Some CPEs close here, others send one more empty POST; the session is completed by that POST or by the sweeper after
+    /// <see cref="CpeSessionTracker.CompletionGrace"/>.
+    /// </summary>
+    public bool AwaitingFinalEmpty { get; set; }
     public bool SawAcsFault { get; set; }
     public bool SawCpeFault { get; set; }
     public DateTimeOffset LastActivity { get; set; }

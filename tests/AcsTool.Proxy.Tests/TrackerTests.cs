@@ -165,12 +165,28 @@ public class TrackerTests
     }
 
     [Fact]
-    public void EvaluateEnd_EmptyAcsResponseToCpeResponseAfterEmptyPost_Completes()
+    public void EvaluateEnd_EmptyAcsResponseToCpeResponseAfterEmptyPost_AwaitsTrailingEmpty()
     {
         var s = Resolve(InformA, "c1");
         Assert.Null(CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Inform, Resp(200, [1]), CwmpMessageKind.InformResponse, []));
         Assert.Null(CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Empty, Resp(200, [1]), CwmpMessageKind.GetParameterValues, []));
-        Assert.Equal(SessionOutcome.Completed, CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.GetParameterValuesResponse, Resp(204), null, []));
+        var notes = new List<string>();
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.GetParameterValuesResponse, Resp(204), null, notes));
+        Assert.True(s.AwaitingFinalEmpty);
+        Assert.Empty(notes);
+        Assert.Equal(SessionOutcome.Completed, CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Empty, Resp(204), null, []));
+    }
+
+    [Fact]
+    public void Sweeper_AwaitingFinalEmpty_CompletesAfterGrace()
+    {
+        _tracker.StartSweeper();
+        var s = Resolve(InformA, "c1");
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Empty, Resp(200, [1]), CwmpMessageKind.GetParameterValues, []));
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.GetParameterValuesResponse, Resp(204), null, []));
+        _time.Advance(CpeSessionTracker.SweepInterval);
+        Assert.Equal(0, _tracker.ActiveCount);
+        Assert.Equal(SessionOutcome.Completed, _store.Get(s.SessionId)!.Outcome);
     }
 
     [Fact]

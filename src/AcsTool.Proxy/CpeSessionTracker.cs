@@ -16,6 +16,8 @@ namespace AcsTool.Proxy;
 public sealed class CpeSessionTracker : IAsyncDisposable
 {
     public static readonly TimeSpan SweepInterval = TimeSpan.FromSeconds(5);
+    /// <summary>Idle time after which a session in <see cref="ProxySession.AwaitingFinalEmpty"/> is ended as completed.</summary>
+    public static readonly TimeSpan CompletionGrace = TimeSpan.FromSeconds(2);
 
     private readonly ProxySettings _settings;
     private readonly IUpstreamHandlerFactory _handlers;
@@ -238,6 +240,7 @@ public sealed class CpeSessionTracker : IAsyncDisposable
             return SessionOutcome.UpstreamError;
         }
         var status = result.StatusCode!.Value;
+        session.AwaitingFinalEmpty = false;
         if (requestKind == CwmpMessageKind.Fault)
         {
             session.SawCpeFault = true;
@@ -270,11 +273,16 @@ public sealed class CpeSessionTracker : IAsyncDisposable
         var emptyResponse = status == 204 || (status is >= 200 and < 300 && result.Body.Length == 0);
         if (emptyResponse)
         {
-            // TR-069 §3.7.1.4: the session ends when the ACS answers empty after the CPE signalled "no more requests"
-            // (its empty POST), either on that empty POST itself or on a later CPE response/fault.
-            if (requestKind == CwmpMessageKind.Empty || session.CpeSentEmpty)
+            // TR-069 §3.7.1.4: the session ends when the ACS answers empty after the CPE signalled "no more requests".
+            if (requestKind == CwmpMessageKind.Empty)
             {
-                return session.SawAcsFault ? SessionOutcome.AcsFault : session.SawCpeFault ? SessionOutcome.CpeFault : SessionOutcome.Completed;
+                return FinalOutcome(session);
+            }
+            if (session.CpeSentEmpty)
+            {
+                // ACS answered a CPE response with empty: the CPE may close now or send a trailing empty POST (§3.6.4 flow).
+                session.AwaitingFinalEmpty = true;
+                return session.IsOneShot ? FinalOutcome(session) : null;
             }
             if (requestKind == CwmpMessageKind.Inform)
             {
@@ -289,6 +297,9 @@ public sealed class CpeSessionTracker : IAsyncDisposable
         }
         return null;
     }
+
+    internal static SessionOutcome FinalOutcome(ProxySession session) =>
+        session.SawAcsFault ? SessionOutcome.AcsFault : session.SawCpeFault ? SessionOutcome.CpeFault : SessionOutcome.Completed;
 
     public ValueTask EndAsync(ProxySession session, SessionOutcome outcome)
     {
@@ -354,7 +365,15 @@ public sealed class CpeSessionTracker : IAsyncDisposable
         {
             foreach (var s in _active.ToList())
             {
-                if (now - s.LastActivity >= IdleTimeout && s.Gate.CurrentCount == 1)
+                if (s.Gate.CurrentCount != 1)
+                {
+                    continue;
+                }
+                if (s.AwaitingFinalEmpty && now - s.LastActivity >= CompletionGrace)
+                {
+                    EndLocked(s, FinalOutcome(s));
+                }
+                else if (now - s.LastActivity >= IdleTimeout)
                 {
                     EndLocked(s, SessionOutcome.Abandoned);
                 }
