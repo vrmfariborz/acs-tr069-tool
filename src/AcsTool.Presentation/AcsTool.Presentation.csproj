@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AcsTool.Presentation</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AcsTool.Core\AcsTool.Core.csproj" />
+    <ProjectReference Include="..\AcsTool.Proxy\AcsTool.Proxy.csproj" />
+    <ProjectReference Include="..\AcsTool.Simulator\AcsTool.Simulator.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AcsTool.Presentation.Tests" />
+  </ItemGroup>
+</Project>

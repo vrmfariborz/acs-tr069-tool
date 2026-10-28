@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AcsTool.Simulator</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Only needed for the stretch Connection Request listener; kept per plan T0.1 -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AcsTool.Core\AcsTool.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AcsTool.Simulator.Tests" />
+  </ItemGroup>
+</Project>

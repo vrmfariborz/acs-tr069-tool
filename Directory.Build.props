@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    Single switch for the target framework (plan D2 / Q1).
+    To move to .NET 10 LTS change only this property (plus package bumps in Directory.Packages.props).
+    The WPF App derives its TFM from it: $(AcsToolTfm)-windows.
+  -->
+  <PropertyGroup>
+    <AcsToolTfm>net8.0</AcsToolTfm>
+    <TargetFramework>$(AcsToolTfm)</TargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Version>0.1.0</Version>
+    <Company>AcsTool</Company>
+    <Product>AcsTool</Product>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(CI)' == 'true'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>
