@@ -89,7 +89,10 @@ public sealed class SimulatedCpe : IAsyncDisposable
     /// <summary>Result of the most recent session (for tests and the UI).</summary>
     public ClientSessionResult? LastResult { get; private set; }
 
-    public int SessionsRun { get; private set; }
+    private int _sessionsRun;
+
+    /// <summary>Sessions finished so far. Written only by the CPE loop (Interlocked), read from any thread (Volatile.Read).</summary>
+    public int SessionsRun => Volatile.Read(ref _sessionsRun);
 
     public bool Post(CpeTrigger trigger) => _triggers.Writer.TryWrite(trigger);
 
@@ -223,7 +226,7 @@ public sealed class SimulatedCpe : IAsyncDisposable
         }
         // Counted after the event bookkeeping and before the final state change, so the StateChanged notification
         // (which the Running CPEs row uses to refresh its counter) already carries the new count.
-        SessionsRun++;
+        Interlocked.Increment(ref _sessionsRun);
         if (ct.IsCancellationRequested)
         {
             return;

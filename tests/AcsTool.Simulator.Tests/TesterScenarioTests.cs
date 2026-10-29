@@ -5,6 +5,7 @@ using AcsTool.Core.Parsing;
 using AcsTool.Core.Sessions;
 using AcsTool.Core.Settings;
 using AcsTool.Proxy;
+using AcsTool.Simulator.Engine;
 using AcsTool.Testing;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -33,7 +34,8 @@ public class TesterScenarioTests
         var store = Kit.NewStore();
         await using var engine = Kit.Engine(store);
         var cpe = (await engine.StartProfileAsync(Kit.Profile(acs.Url()), sendBootNow: true, default)).Single();
-        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 1), "session did not finish");
+        // Wait for the final state too: the count is bumped just before it is published (review n2).
+        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 1 && cpe.State.Kind != CpeStateKind.InSession), "session did not finish");
         Assert.Empty(acs.Violations);
         Assert.Equal(SessionOutcome.Completed, cpe.LastResult!.Outcome);
         var fault = acs.Received[2];
