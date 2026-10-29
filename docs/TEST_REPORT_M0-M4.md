@@ -363,6 +363,8 @@ Verified by TesterBot on 2026-10-29 in separate worktrees. Branch `tester/doc-fi
 | `CI=true ./build.sh` | 0 warnings; **553 / 0 / 3** (Core 322 + 3 skipped) |
 | `CI=true ./build.sh` with the tests below | 0 warnings; Core 322/0/3, Proxy 102/0/0, Simulator 97/0/0, Presentation 59/0/1, so **580 / 0 / 4** (the extra skip is the FLAKY-01 repro) |
 
+*Update 2026-10-29: the FLAKY-01 repro is no longer skipped (fixed on main, see 12.4).*
+
 ### 12.2 Probes
 
 **(a) Simulator Fault classification.** `TesterDocFindingsTests` runs over real HTTP (FakeAcs + HttpCwmpTransport), both directly and simulator → proxy → FakeAcs.
@@ -427,6 +429,8 @@ In production this only delays an update by one flush (harmless). The test assum
 **Fixes:**
 - **Proposed fix (src, for CoderBot):** one line, `Drain(reader, pending, ref cleared);` after the collect loop and before `flushCts.CancelAsync()`. In a throwaway worktree (deleted afterwards) the repro and all 8 FeedPump tests passed 5/5 with it, and `CI=true` built Presentation with 0 warnings.
 - **Alternative (test only):** before each `time.Advance`, wait for `store.Changes.Count == 0` (the bounded channel can count).
+
+> **Update 2026-10-29:** the proposed fix landed on main (`3131a48`, merged in `93980dc`) and `TesterFeedPumpRaceTests` is **no longer skipped**; it runs and passes in every build. The skip counts above are as recorded at `b8d33bb`. Current skips are the NET10-01/02 repros, plus the DNS test where every name resolves. On `fix/timeout-test-hardening` the live client-timeout tests also gained a 30 s hang guard and elapsed-time bounds (the never-responding-server test: 2.5–20 s for its 3 s timeout).
 
 ### 12.5 Windows smoke checklist additions (after W-1…W-30)
 
