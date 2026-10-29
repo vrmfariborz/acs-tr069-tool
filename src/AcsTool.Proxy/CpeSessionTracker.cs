@@ -58,7 +58,7 @@ public sealed class CpeSessionTracker : IAsyncDisposable
         }
         if (string.IsNullOrWhiteSpace(tls.CustomCaPath))
         {
-            throw new ProxyStartException("TLS mode CustomCa needs a CA certificate file (Settings → TLS).");
+            throw new ProxyStartException("TLS mode CustomCa needs proxy.tls.customCaPath in settings.json.");
         }
         try
         {

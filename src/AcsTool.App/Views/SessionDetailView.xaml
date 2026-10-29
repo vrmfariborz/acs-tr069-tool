@@ -79,6 +79,16 @@
                 </ItemsControl>
                 <TextBlock Text="{Binding ErrorText}" Foreground="{StaticResource ErrorBrush}" Margin="4,8"
                            Visibility="{Binding ErrorText, Converter={StaticResource NullToVisibility}}" />
+                <StackPanel Visibility="{Binding HasNotes, Converter={StaticResource BoolToVisibility}}">
+                  <TextBlock Text="Proxy notes" FontWeight="SemiBold" Margin="4,8,4,4" />
+                  <ItemsControl ItemsSource="{Binding Notes}" Margin="8,0">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding StringFormat='• {0}'}" TextWrapping="Wrap" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
               </StackPanel>
             </ScrollViewer>
           </TabItem>

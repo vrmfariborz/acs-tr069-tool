@@ -137,6 +137,16 @@ public sealed partial class SettingsViewModel : ObservableValidator
     /// </summary>
     public void Refresh() => LoadFrom(_holder.Current);
 
+    /// <summary>
+    /// Resets the fields shown in this window. Sections and proxy values the window doesn't edit (proxy.tls,
+    /// maxRequestBodyBytes, Simulator, Ui, Logging) are kept, so a later Save doesn't wipe settings.json edits (doc review d).
+    /// </summary>
     [RelayCommand]
-    private void RestoreDefaults() => LoadFrom(AppSettings.Default with { Simulator = _base.Simulator, Ui = _base.Ui, Logging = _base.Logging });
+    private void RestoreDefaults() => LoadFrom(AppSettings.Default with
+    {
+        Proxy = AppSettings.Default.Proxy with { Tls = _base.Proxy.Tls, MaxRequestBodyBytes = _base.Proxy.MaxRequestBodyBytes },
+        Simulator = _base.Simulator,
+        Ui = _base.Ui,
+        Logging = _base.Logging,
+    });
 }

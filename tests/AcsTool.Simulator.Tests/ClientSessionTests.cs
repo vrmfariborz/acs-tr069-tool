@@ -167,6 +167,45 @@ public class ClientSessionTests
         Assert.Equal(SessionOutcome.HttpError, (await Run()).Outcome);
     }
 
+    private FakeTransport FaultWithStatus(int status) =>
+        _t.Then(p => FakeTransport.Ok(Kit.Builder.Build(CwmpMessageBuilder.CreateFault(FaultCodes.AcsRetryRequest), CwmpVersion.V1_0,
+            new CwmpHeader(p.Envelope!.Header.Id)), status));
+
+    [Fact]
+    public async Task FaultInformResponse_WithHttp500_AcsFault_LikeProxy()
+    {
+        // Doc review finding (a): SOAP 1.1 faults usually come with HTTP 500; the proxy classifies this as AcsFault.
+        FaultWithStatus(500);
+        var r = await Run();
+        Assert.Equal(SessionOutcome.AcsFault, r.Outcome);
+        Assert.False(r.InformAccepted);
+        Assert.Single(_t.Sent);
+        Assert.Contains(_store.Get(r.SessionId)!.Notes, n => n.Contains("ACS fault 8005", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Http500_NonFaultBody_StaysHttpError()
+    {
+        _t.Then(_ => FakeTransport.Ok(System.Text.Encoding.UTF8.GetBytes("<html><body>Internal Server Error</body></html>"), 500));
+        Assert.Equal(SessionOutcome.HttpError, (await Run()).Outcome);
+    }
+
+    [Fact]
+    public async Task Http500_InformResponseBody_StaysHttpError()
+    {
+        _t.Then(p => FakeTransport.Ok(Kit.Builder.Build(new InformResponseMessage(1), CwmpVersion.V1_0, new CwmpHeader(p.Envelope!.Header.Id)), 500));
+        Assert.Equal(SessionOutcome.HttpError, (await Run()).Outcome);
+    }
+
+    [Theory]
+    [InlineData(401, SessionOutcome.AuthFailed)]
+    [InlineData(407, SessionOutcome.HttpError)]
+    public async Task AuthChallenge_WithFaultBody_KeepsStatusClassification(int status, SessionOutcome expected)
+    {
+        FaultWithStatus(status);
+        Assert.Equal(expected, (await Run()).Outcome);
+    }
+
     [Fact]
     public async Task MessageCap_ProtocolError()
     {

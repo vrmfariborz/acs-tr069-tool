@@ -3,6 +3,8 @@
 A Windows desktop tool (WPF, .NET 10) that sits between CPEs and an ACS as a capturing TR-069/CWMP proxy, and simulates CPEs sending Informs.
 See `docs/PLAN.md` for the design and `docs/IMPLEMENTATION_NOTES.md` for status, deviations and known gaps.
 
+**New here? Read the [User Guide](docs/user-guide/README.md)**: getting started, a tour of every screen, proxy and simulator how-tos, the settings reference, a TR-069 primer, troubleshooting and the roadmap.
+
 ## Projects
 - `src/AcsTool.Core`: CWMP model, parser, builders, session store, settings (net10.0).
 - `src/AcsTool.Proxy`: Kestrel-based capturing proxy (net10.0).
