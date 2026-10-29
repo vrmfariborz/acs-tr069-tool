@@ -174,11 +174,7 @@ The capture settings bound how much the in-memory session store keeps. The store
 
 ## Restore defaults
 
-**Restore defaults** in the Settings window resets the whole `proxy` and `capture` sections, not only the fields on screen. After **Save**:
-- `proxy.tls` becomes `null`: TLS mode Strict, and your pins and custom CA path are **gone**;
-- `proxy.maxRequestBodyBytes` goes back to 10 MiB.
-
-The `simulator`, `ui` and `logging` sections are kept. If you use hand-edited TLS settings, back up `settings.json` first. This is a [known issue](troubleshooting.md#known-issues-fixes-planned); a fix to keep `tls` and `maxRequestBodyBytes` is planned.
+**Restore defaults** in the Settings window resets the fields shown on its Proxy and Capture pages to their defaults (not saved until **Save**). Settings the window doesn't show are kept: `proxy.tls` (TLS mode, pins, CA path), `proxy.maxRequestBodyBytes`, and the `simulator`, `ui` and `logging` sections.
 
 ## Corrupt or missing settings file
 

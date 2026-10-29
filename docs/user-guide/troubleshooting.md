@@ -10,7 +10,7 @@ Start with the place the problem shows up: a banner, a session outcome, or somet
 | ✖ *Port 7547 is already in use (another ACS/CPE tool?) — choose another port* | Another program (a local ACS, another AcsTool, a CPE emulator) listens on that port. | Stop the other program, or choose another port (and point the CPE at it). `netstat -ano \| findstr :7547` in a terminal shows the process ID. |
 | ✖ *Access denied binding …:… — choose another port or check security software* | Windows or security software doesn't allow listening there (excluded port range, policy). | Try another port, e.g. 17547. `netsh interface ipv4 show excludedportrange protocol=tcp` lists reserved ranges. |
 | ✖ *Address … is not available on this PC — choose 0.0.0.0 or a local IP* | The Listen address isn't one of this PC's addresses (often after a network change). | Use `0.0.0.0`, or an address from `ipconfig`. |
-| ✖ *Proxy failed to start: TLS mode CustomCa needs a CA certificate file (Settings → TLS).* | `proxy.tls.mode` is `CustomCa` but `customCaPath` is empty. There is no TLS page in the Settings window yet, despite the message ([known issue](#customca-error-points-to-settings--tls)). | Close the app, set `proxy.tls.customCaPath` in `settings.json` (see [hand edit](proxy-mode.md#configuring-pinnedthumbprint-or-customca-hand-edit)), or pick another TLS mode on the Proxy tab. |
+| ✖ *Proxy failed to start: TLS mode CustomCa needs proxy.tls.customCaPath in settings.json.* | `proxy.tls.mode` is `CustomCa` but `customCaPath` is empty. | Close the app, set `proxy.tls.customCaPath` in `settings.json` (see [hand edit](proxy-mode.md#configuring-pinnedthumbprint-or-customca-hand-edit)), or pick another TLS mode on the Proxy tab. |
 | ✖ *Proxy failed to start: Custom CA file '…' could not be loaded: …* | `proxy.tls.mode` is `CustomCa` and the file is missing, password-protected or not a certificate. | Fix `customCaPath` in `settings.json` (with the app closed). See [CustomCa notes](#customca-wont-load-my-pem-file). |
 | ⚠ *TLS validation disabled for the upstream ACS* | TLS mode is IgnoreErrors and the upstream URL is `https://` (shown on Start). | Expected in a lab. Switch to Strict, PinnedThumbprint or CustomCa when you're done. |
 | ⚠ *Upstream base URL has a path; Digest auth may fail (uri mismatch)* | Path mode PassThrough with an upstream URL like `http://acs/tr069`: the ACS sees `/tr069/acs` but the CPE signs `/acs`. | Remove the path from the upstream URL and put it in the CPE's ACS URL instead (e.g. upstream `http://acs`, CPE ACS URL `http://<PC IP>:7547/tr069`). See [Paths](proxy-mode.md#paths-and-the-acs-url). |
@@ -44,7 +44,7 @@ The ACS leg failed; the CPE received `502` or `504`. The [error classes table](p
 - With **ManagedPerCpe**, the ACS's session cookie is kept by the proxy; that's fine, but if the ACS also expects the CPE's own cookies, use PassThrough.
 
 ### The ACS redirects (3xx) and the CPE goes around the proxy
-The proxy doesn't rewrite `Location` and doesn't follow redirects. (It records a note on the exchange, but exchange notes aren't shown in the UI yet; the Response column shows the 3xx status and the Headers tab shows `Location`.) Point the upstream URL at the final address instead.
+The proxy doesn't rewrite `Location` and doesn't follow redirects. (Select the exchange: the Response column shows the 3xx status, the Summary tab's **Proxy notes** say `3xx Location points to …`, and the Headers tab shows `Location`.) Point the upstream URL at the final address instead.
 
 ### `413` returned to the CPE / `BODYTOOLARGE`
 A body was larger than `proxy.maxRequestBodyBytes` (10 MiB). Raise it in `settings.json` if you really need to.
@@ -55,7 +55,7 @@ A body was larger than `proxy.maxRequestBodyBytes` (10 MiB). Raise it in `settin
 - PFX files must have no password.
 
 ### My pins or CA path disappeared
-**Restore defaults** + **Save** in the Settings window clears `proxy.tls` ([known issue](#restore-defaults-wipes-hand-edited-tls-settings)), and the app writes its in-memory settings on exit, so edits made to `settings.json` while the app runs are overwritten. Edit with the app closed; see [Restore defaults](settings-reference.md#restore-defaults).
+The app writes its in-memory settings on exit, so edits made to `settings.json` while the app runs are overwritten. Edit with the app closed. (**Restore defaults** keeps `proxy.tls`; see [Restore defaults](settings-reference.md#restore-defaults).)
 
 ## Simulator problems
 
@@ -91,21 +91,15 @@ The body was larger than **Max captured body**; only the first part was kept. It
 ### Pretty doesn't format the XML
 The body isn't well-formed XML, or it's more than 2 million characters. The text is shown unchanged.
 
-## Known issues (fixes planned)
+## Known differences between the simulator and the proxy
 
-These are how the current version behaves. Fixes are planned (see [roadmap](roadmap.md#planned-fixes-for-known-issues)).
+The simulator and the proxy classify two cases differently. This is current behavior; follow-up fixes are listed in the [roadmap](roadmap.md#simulator-and-proxy-consistency).
 
-### The proxy says *ACS fault*, the simulator says *HTTP error* for the same session
-An ACS that rejects an Inform with a SOAP Fault usually sends it with HTTP **500**. The proxy sees the Fault first and labels the session **⚠ ACS fault**. The simulator checks the HTTP status first, so it reports **⚠ HTTP error** unless the Fault came with a 2xx status. The fault code and string are in the Summary and Raw tabs either way. Planned fix: the simulator will check for the Fault first, like the proxy.
+### A Fault later in the session: *Completed* in the simulator, *ACS fault* in the proxy
+When the ACS sends a SOAP Fault with a 2xx status later in a session (not to the Inform), the simulated CPE notes *ACS sent Fault, which is not a request; sending an empty POST*, carries on, and the session ends **✔ Completed**. The proxy remembers the Fault and ends the same session as **⚠ ACS fault**. (A later Fault with a non-2xx status, usually 500, ends as **⚠ HTTP error** on both sides.)
 
-### Restore defaults wipes hand-edited TLS settings
-**Restore defaults** followed by **Save** in the Settings window resets the whole `proxy` section, including `proxy.tls` (TLS mode, pins and CA path) and `proxy.maxRequestBodyBytes`, which the window doesn't show. Workaround: back up `settings.json` before restoring defaults, and copy the `tls` block back with the app closed. Planned fix: Restore defaults will keep these two values.
-
-### CustomCa error points to Settings → TLS
-With TLS mode CustomCa and no CA path, Start fails with *TLS mode CustomCa needs a CA certificate file (Settings → TLS).* There is no TLS page in the Settings window yet. Set `proxy.tls.customCaPath` in `settings.json` instead ([how](proxy-mode.md#configuring-pinnedthumbprint-or-customca-hand-edit)). Planned fix: the message will name `proxy.tls.customCaPath`.
-
-### Exchange notes are not shown
-The proxy records notes on single exchanges (auth challenge, cookie rewrites, 3xx `Location`, a Fault answering the Inform), but the detail pane shows only session-level notes. Use the Response column and the Headers tab instead. Planned fix: show the selected exchange's notes.
+### `403` to the Inform: *HTTP error* in the simulator, *Auth failed* in the proxy
+A plain `403` (no SOAP Fault) ends the simulator session as **⚠ HTTP error**; the proxy reports **🔒 Auth failed**. A `403` that carries a SOAP Fault is **⚠ ACS fault** on both sides.
 
 ---
 

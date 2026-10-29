@@ -263,7 +263,7 @@ Shows *Select a session* until you click a feed row.
 - **Events:** full event codes with CommandKeys, e.g. `1 BOOT; M Reboot (rb1)` · CWMP version (`cwmp-1-0`, or `unknown`) · `→` target URL
 - TLS line, only for HTTPS upstream sessions in the Proxy tab: `<certificate subject> · issuer <issuer> · <policy errors>` (e.g. `None`, `RemoteCertificateChainErrors`)
 - Error line in red: the last classified error
-- Session notes as bullets, e.g. `• ambiguous correlation by IP`, `• CPE disconnected before response relayed` (proxy) or `• ACS fault 8005 Retry request` (simulator). Notes recorded on single exchanges (auth challenges, cookie rewrites, 3xx Location) are not shown yet; see [roadmap](roadmap.md#planned-fixes-for-known-issues).
+- Session notes as bullets, e.g. `• ambiguous correlation by IP`, `• CPE disconnected before response relayed` (proxy) or `• ACS fault 8005 Retry request` (simulator). Notes on single exchanges (auth challenges, cookie rewrites, 3xx Location) are shown under **Proxy notes** on the Summary tab when you select the exchange.
 
 ### Exchanges grid
 
@@ -277,7 +277,7 @@ Shows *Select a session* until you click a feed row.
 Selecting an exchange fills the three tabs below. The splitter between the grid and the tabs is draggable.
 
 ### Summary tab
-Two name/value lists, **Request** and **Response**, with the parsed fields of each message: `Method`, `cwmp:ID`, `HoldRequests`, `Version`, then message-specific fields, for example for an Inform: `DeviceId` (`Manufacturer / OUI / ProductClass / Serial`), `Events`, `RetryCount`, `MaxEnvelopes`, `CurrentTime` and one line per parameter (`name` → `value (type)`). Lists longer than 200 items end with `… and K more — see the Raw view`. A classified error is shown in red below.
+Two name/value lists, **Request** and **Response**, with the parsed fields of each message: `Method`, `cwmp:ID`, `HoldRequests`, `Version`, then message-specific fields, for example for an Inform: `DeviceId` (`Manufacturer / OUI / ProductClass / Serial`), `Events`, `RetryCount`, `MaxEnvelopes`, `CurrentTime` and one line per parameter (`name` → `value (type)`). Lists longer than 200 items end with `… and K more — see the Raw view`. A classified error is shown in red below. For proxy exchanges that have notes, a **Proxy notes** list follows, e.g. `• AuthChallenge`, `• Set-Cookie Domain stripped`, `• 3xx Location points to …`; it's hidden when the exchange has none (simulator exchanges never have any).
 
 ### Headers tab
 - **Reveal Authorization** check box (off): while off, `Authorization` and `Proxy-Authorization` values are masked, e.g. `Basic <redacted user=cpe1>` or `Digest username="cpe1" <redacted>`. Tick it to see the real value.
@@ -297,7 +297,7 @@ Opened with **⚙ Settings**. Size 640 × 560, resizable. Pages on the left: **P
 
 | Button | What it does |
 |---|---|
-| **Restore defaults** | Fills both pages with default values (not saved until **Save**). Also resets settings that have no field here, such as `tls` and `maxRequestBodyBytes`; see the warning in [settings-reference.md](settings-reference.md#restore-defaults). |
+| **Restore defaults** | Fills both pages with default values (not saved until **Save**). Settings that have no field here, such as `tls` and `maxRequestBodyBytes`, are kept; see [settings-reference.md](settings-reference.md#restore-defaults). |
 | **Cancel** (Esc) | Discards edits. |
 | **Save** (Enter) | Validates, writes `settings.json` and applies the values. A field with a validation error (red border) blocks saving. |
 

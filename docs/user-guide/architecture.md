@@ -66,7 +66,7 @@ For each request, `ProxyRequestHandler`:
 3. Asks `CpeSessionTracker` for the session (connection id → cookie pair → IP fallback → new orphan). An Inform always starts a new session and supersedes the device's older one from the same IP.
 4. Waits on the session's **gate** (`SemaphoreSlim(1)`), so exchanges of one session are serialized like a real CPE would do.
 5. Forwards through `UpstreamForwarder`: one `HttpMessageInvoker` per CWMP session, created by `CpeSessionTracker` (`SocketsHttpHandler`, no automatic redirects, with the TLS callback, connect callback with phase tracking, optional system proxy), `HeaderRewriter` for both directions, cookies per mode.
-6. Records exchange notes (header rewrites, end-rule notes) on the exchange; only session-level notes are shown in the UI today. Classifies failures (`ErrorClassifier`: DNS/Connect/TLS/Timeout+phase/…), answers the CPE (`502`/`504`, or aborts), and records the exchange.
+6. Records exchange notes (header rewrites, end-rule notes) on the exchange; the detail pane's Summary tab shows them under **Proxy notes**. Classifies failures (`ErrorClassifier`: DNS/Connect/TLS/Timeout+phase/…), answers the CPE (`502`/`504`, or aborts), and records the exchange.
 7. Applies the end rules (see [How a session ends](proxy-mode.md#how-a-session-ends)). A 1 s sweep timer ends idle sessions and finalizes those waiting for the 2 s completion grace.
 
 `ProxyServer` owns Kestrel (`WebApplication.CreateSlimBuilder`), maps bind errors to `ProxyBindFailure` (port in use, access denied, address not available), and loads the custom CA once per start.
@@ -111,7 +111,7 @@ All time-dependent code takes a `TimeProvider`, so tests use `FakeTimeProvider` 
 
 ## Tests
 
-- **xUnit** projects for Core, Proxy, Simulator and Presentation, run on Linux and Windows. At `main` (7b8c906): 545 tests, **542 passed, 3 skipped**.
+- **xUnit** projects for Core, Proxy, Simulator and Presentation, run on Linux and Windows. With the doc-review fixes (fix/doc-findings, b8d33bb): 556 tests, **553 passed, 3 skipped** on Linux (on Windows the DNS test runs too: 554 passed, 2 skipped).
 - **`FakeAcs`** (`tests/AcsTool.Testing`) is a scriptable in-process ACS used by proxy and simulator tests; `AcsTool.Simulator.Tests` also runs simulator → proxy → FakeAcs end to end.
 - **Fixtures** in `tests/fixtures/` cover CWMP 1.0–1.2 Informs, odd namespaces, faults and RPCs.
 - **Skipped tests**: two documented known issues with CustomCa (UTF-8 BOM PEM, multi-certificate PEM: `NET10-01`, `NET10-02`) and a DNS test that skips when the resolver answers for `nonexistent.invalid`. The unroutable-connect timeout test can be skipped locally with `ACSTOOL_SKIP_NET_TIMEOUT=1`; the build scripts refuse that in CI.

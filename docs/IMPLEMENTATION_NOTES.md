@@ -67,6 +67,7 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 6. Run `AcsTool.exe --smoke-exit`. It exits with code 0.
 7. Resize the main window slowly across its minimum size on both tabs. Scrollbars appear only below the minimum, the Simulator tab shows no scrollbar at the default size, and the Simulator splitter resizes the profile editor against the lower pane. (Rendering can't be checked on Linux.)
 8. Password binding (review R2-M1). On a fresh install (no profiles or settings file yet), click **+ From TR-098** first (no profile is created automatically), select the new profile and type a password into the Password field. Use credentials that an ACS requiring Basic or Digest auth accepts. Save and restart the app. Start the profile and click "Send Inform now". The CPE authenticates: the session shows an auth challenge followed by success and ends Completed, not AuthFailed. The password field shows dots and never plain text.
+9. Proxy notes (doc review g, n3). With an ACS that sets a cookie with `Domain=` (Cookies = PassThrough), run a proxied session, select the exchange whose response carries `Set-Cookie`, and open the Summary tab. A **Proxy notes** list appears below the Response fields with `• Set-Cookie Domain stripped`. An exchange without notes shows no Proxy notes header.
 
 ## Review fixes (docs/REVIEW_M0-M4.md, branch fix/review-m0-m4)
 

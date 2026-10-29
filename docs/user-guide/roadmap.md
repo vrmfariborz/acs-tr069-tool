@@ -16,14 +16,12 @@ These features are **planned but not in the app yet** (as of `main` at 7b8c906).
 
 Not in M5 (deferred): upstream **client certificates** (mutual TLS; `clientCertPfxPath` is unused), the negotiated protocol/cipher on the upstream leg, HTTP/2 inbound.
 
-## Planned fixes for known issues
+## Simulator and proxy consistency
 
-These are current behaviors with fixes planned; see [troubleshooting.md](troubleshooting.md#known-issues-fixes-planned) for workarounds.
+Two cases are classified differently by the simulator and the proxy (see [troubleshooting.md](troubleshooting.md#known-differences-between-the-simulator-and-the-proxy)). The follow-up fixes are deferred:
 
-- **Show per-exchange notes.** The proxy records notes on single exchanges (`AuthChallenge`, cookie rewrites such as `Set-Cookie Domain stripped`, `3xx Location …`, `ACS answered the Inform with a SOAP Fault`), but the detail pane shows only session-level notes. The fix is to show the selected exchange's notes in the Summary tab.
-- **Simulator fault classification.** A SOAP Fault to the Inform sent with HTTP 500 shows as **⚠ HTTP error** in the simulator, but as **⚠ ACS fault** in the proxy. The simulator will check for the Fault first, like the proxy.
-- **Restore defaults keeps hand-edited TLS.** Restore defaults + Save will keep `proxy.tls` (pins, CA path) and `proxy.maxRequestBodyBytes` instead of resetting them.
-- **CustomCa error message.** *TLS mode CustomCa needs a CA certificate file (Settings → TLS).* will point to `proxy.tls.customCaPath` in `settings.json` instead of a page that doesn't exist yet.
+- A SOAP Fault with a 2xx status later in a session: the simulator will end the session **⚠ ACS fault**, like the proxy, instead of **✔ Completed**.
+- A `403` to the Inform: the simulator will report **🔒 Auth failed**, like the proxy, instead of **⚠ HTTP error**.
 
 ## Auth and cookies follow-ups
 
