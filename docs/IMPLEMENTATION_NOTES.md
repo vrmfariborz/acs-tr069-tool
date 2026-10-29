@@ -15,7 +15,7 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 ## Deviations
 
 ### Build and tooling
-- `global.json` uses `rollForward: latestMajor`. A newer installed SDK can still build the project. The TFM stays net8.0 through `AcsToolTfm`.
+- `global.json` requires SDK 8.0.427 or newer within 8.0.x (`rollForward: latestFeature`; it was `latestMajor` until the CI fix below, which let SDK 10 analyzers in). The TFM stays net8.0 through `AcsToolTfm`.
 - NSubstitute is not used; the tests rely on hand-written fakes (`FakeAcs`, `FakeTransport`, `RecordingSink`, TestKit). AvalonEdit is not used either; the MVP raw and pretty views are read-only monospace `TextBox`es. Reason: fewer dependencies, and the fakes were simpler and more deterministic.
 - Some CA rules are suppressed in `.editorconfig`:
   - Product code: CA2007 (ConfigureAwait; the library convention is enforced by review), CA1848/CA1873 (LoggerMessage delegates), and CA1707/CA1711/CA1716/CA1720 (naming of CWMP domain types such as `Fault`, `Event`, `...Stream`).
@@ -107,7 +107,7 @@ Deferred after the final review (re-review 3, @ 1b8fe03):
 - **Reproduced locally:** With SDK 10.0.403 installed side by side in `~/.dotnet`, the same single CA1859 error appeared. Pinning `AnalysisLevel` alone did not help, because the rule is part of the 8.0 set and the SDK 10 analyzer simply detects more cases. With the fix, SDK 10.0.403 reports no other new analyzer findings.
 - **Fix:**
   - `SessionStoreTests.Drain` now takes `InMemorySessionStore`.
-  - `global.json` pins `8.0.427` with `rollForward: latestFeature`, so the build uses the newest installed 8.0.x SDK, never 9 or 10.
+  - `global.json` sets `8.0.427` with `rollForward: latestFeature`. 8.0.427 is a **minimum**, not an exact pin (review n4). The build uses the newest installed 8.0.x SDK at or above it, never 9 or 10. setup-dotnet installs the latest 8.0 SDK (`--channel 8.0`), so newer 8.0 patch releases are picked up automatically, which is intended for security fixes. `AnalysisLevel` 8.0-recommended limits analyzer drift. For a bit-exact toolchain, `rollForward: disable` would be needed, with manual bumps.
   - Both CI jobs use `setup-dotnet` with `global-json-file: global.json`, so CI and local builds can't drift, and print `dotnet --info`.
   - `AnalysisLevel` is pinned to `8.0-recommended` instead of `latest-recommended`.
 - **R3-n1:** The Windows job now runs `./build.ps1 -NoCoverage` (restore, build and all non-Perf tests, including the `ACSTOOL_SKIP_NET_TIMEOUT` guard) before publishing and `--smoke-exit`.
