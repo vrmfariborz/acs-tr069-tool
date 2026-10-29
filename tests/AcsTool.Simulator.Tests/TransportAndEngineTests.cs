@@ -110,7 +110,14 @@ public class EngineTests
         cpe.StateChanged += (_, s) => { lock (states) { states.Add(s.Kind); } };
         Assert.Equal(CpeStateKind.Idle, cpe.State.Kind);
         cpe.Post(new CpeTrigger.Manual([new EventStruct(EventCodes.Boot)]));
-        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 1 && cpe.State.Kind == CpeStateKind.Idle), "session did not finish");
+        // State is written before StateChanged runs: also wait for the handler to have recorded Idle (TesterBot).
+        Assert.True(await TestUtil.WaitUntilAsync(() =>
+        {
+            lock (states)
+            {
+                return cpe.SessionsRun == 1 && cpe.State.Kind == CpeStateKind.Idle && states.Contains(CpeStateKind.Idle);
+            }
+        }), "session did not finish");
         Assert.Empty(acs.Violations);
         Assert.Equal(SessionOutcome.Completed, cpe.LastResult!.Outcome);
         Assert.Equal("ntp.acs.test", cpe.Store.Get("InternetGatewayDevice.Time.NTPServer1")!.Value);
@@ -179,6 +186,50 @@ public class EngineTests
         cpe.Post(new CpeTrigger.Manual([]));
         Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 2 && cpe.State.Kind != CpeStateKind.InSession), cpe.State.ToString());
         Assert.Equal(2u, cpe.State.RetryCount);
+    }
+
+    [Fact]
+    public async Task StateChanged_CarriesNewSessionsRun_ForFinalState()
+    {
+        // Review m1: deterministic check of the ordering in SimulatedCpe (count bumped before the final state is published).
+        // The handler runs synchronously on the CPE loop thread, so each recorded pair is exactly what an observer gets.
+        await using var acs = await FakeAcs.StartAsync(); // default script: one Completed session
+        var store = Kit.NewStore();
+        await using var engine = Kit.Engine(store);
+        var cpe = (await engine.StartProfileAsync(Kit.Profile(acs.Url()), sendBootNow: false, default)).Single();
+        var seen = new List<(CpeStateKind Kind, int Count)>();
+        cpe.StateChanged += (_, s) => { lock (seen) { seen.Add((s.Kind, cpe.SessionsRun)); } };
+
+        cpe.Post(new CpeTrigger.Manual([new EventStruct(EventCodes.Boot)]));
+        Assert.True(await TestUtil.WaitUntilAsync(() => { lock (seen) { return seen.Count >= 2; } }), "first session did not finish");
+        cpe.Post(new CpeTrigger.Manual([]));
+        Assert.True(await TestUtil.WaitUntilAsync(() => { lock (seen) { return seen.Count >= 4; } }), "second session did not finish");
+        lock (seen)
+        {
+            Assert.Equal(new[] { (CpeStateKind.InSession, 0), (CpeStateKind.Idle, 1), (CpeStateKind.InSession, 1), (CpeStateKind.Idle, 2) }, seen);
+        }
+    }
+
+    [Fact]
+    public async Task StateChanged_CarriesNewSessionsRun_ForErrorState()
+    {
+        var l = new TcpListener(IPAddress.Loopback, 0);
+        l.Start();
+        var port = ((IPEndPoint)l.LocalEndpoint).Port;
+        l.Stop();
+        await using var engine = Kit.Engine(Kit.NewStore());
+        var cpe = (await engine.StartProfileAsync(Kit.Profile($"http://127.0.0.1:{port}/acs"), sendBootNow: false, default)).Single();
+        var seen = new List<(CpeStateKind Kind, int Count)>();
+        cpe.StateChanged += (_, s) => { lock (seen) { seen.Add((s.Kind, cpe.SessionsRun)); } };
+
+        cpe.Post(new CpeTrigger.Manual([new EventStruct(EventCodes.Boot)]));
+        Assert.True(await TestUtil.WaitUntilAsync(() => { lock (seen) { return seen.Count >= 2; } }));
+        cpe.Post(new CpeTrigger.Manual([]));
+        Assert.True(await TestUtil.WaitUntilAsync(() => { lock (seen) { return seen.Count >= 4; } }));
+        lock (seen)
+        {
+            Assert.Equal(new[] { (CpeStateKind.InSession, 0), (CpeStateKind.Error, 1), (CpeStateKind.InSession, 1), (CpeStateKind.Error, 2) }, seen);
+        }
     }
 
     [Fact]
