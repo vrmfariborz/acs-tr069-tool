@@ -160,6 +160,21 @@ public class TrackerTests
         Assert.Equal(expected, CpeSessionTracker.EvaluateEnd(s, requestKind, Resp(status, new byte[bodyLen]), null, notes));
     }
 
+    [Theory]
+    [InlineData(200)]
+    [InlineData(500)]
+    public void EvaluateEnd_AcsFaultToInform_EndsAcsFaultImmediately(int status)
+    {
+        // BUG-01: whatever the HTTP status, a SOAP Fault answering the Inform ends the session now.
+        var s = Resolve(InformA, "c1");
+        var notes = new List<string>();
+        Assert.Equal(SessionOutcome.AcsFault, CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Inform, Resp(status, new byte[10]), CwmpMessageKind.Fault, notes));
+        Assert.Contains("ACS answered the Inform with a SOAP Fault", notes);
+        // A fault to a later CPE response does not end the session by itself (the ACS may continue).
+        var s2 = Resolve(InformB, "c2");
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s2, CwmpMessageKind.GetParameterValuesResponse, Resp(200, new byte[10]), CwmpMessageKind.Fault, notes));
+    }
+
     [Fact]
     public void EvaluateEnd_TwoConsecutive401_AuthFailed()
     {

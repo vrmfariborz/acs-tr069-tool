@@ -299,6 +299,14 @@ public sealed class CpeSessionTracker : IAsyncDisposable
         if (responseKind == CwmpMessageKind.Fault)
         {
             session.SawAcsFault = true;
+            if (requestKind == CwmpMessageKind.Inform)
+            {
+                // TR-069 §3.7.1.4 / A.3.2.1: a CPE whose Inform is answered with a SOAP Fault ends the session and retries
+                // later; it sends nothing more, so waiting for the idle sweep would only mislabel it Abandoned (BUG-01).
+                // Checked before the HTTP status: SOAP 1.1 faults usually come with HTTP 500.
+                notes.Add("ACS answered the Inform with a SOAP Fault");
+                return SessionOutcome.AcsFault;
+            }
         }
         if (status == 401)
         {

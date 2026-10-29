@@ -361,7 +361,7 @@ public class TesterExploratoryTests
 
     // ---- defects (expected behavior; skipped) ---------------------------------------------------------------------------------
 
-    [Fact(Skip = "BUG-01 (still open on fix/review-m0-m4 dfae3b3): ACS SOAP Fault to Inform leaves the proxy session InProgress until the idle sweep (Abandoned) instead of ending AcsFault")]
+    [Fact] // BUG-01, fixed: was skipped while the session stayed InProgress until the idle sweep (Abandoned)
     public async Task AcsFaultToInform_Bug01_SessionEndsAcsFaultPromptly()
     {
         await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s.ExpectInform()
@@ -376,21 +376,17 @@ public class TesterExploratoryTests
     }
 
     [Fact]
-    public async Task AcsFaultToInform_ActualBehavior_OpenPastGrace_ThenAbandonedNotAcsFault()
+    public async Task AcsFaultToInform_EndsAcsFault_NotLeftOpenForTheSweep()
     {
-        // Characterization of BUG-01 (passes today; flips when the bug is fixed).
+        // Was the BUG-01 characterization (open past the grace, then Abandoned); flipped now that the bug is fixed.
         await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s.ExpectInform()
             .Respond(new CwmpFault("Server", "CWMP fault", FaultCodes.AcsRetryRequest, "Retry request", [])));
         await using var h = await ProxyHarness.StartAsync(acs, s => s with { SessionIdleTimeoutSeconds = 4 });
         using var client = ProxyHarness.CpeClient();
         using var r = await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform("FLT2")));
-        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
-        await Task.Delay(CpeSessionTracker.CompletionGrace + TimeSpan.FromMilliseconds(500));
-        h.Tracker.Sweep();
-        Assert.Equal(1, h.Tracker.ActiveCount);
-        Assert.Equal(SessionOutcome.InProgress, h.Store.GetAll().Single().Outcome);
-        Assert.True(await TestUtil.WaitUntilAsync(() => h.Store.GetAll().Single().Ended is not null, 6000));
-        Assert.Equal(SessionOutcome.Abandoned, h.Store.GetAll().Single().Outcome); // the ACS fault is lost from the outcome
+        Assert.True(await TestUtil.WaitUntilAsync(() => h.Store.GetAll().Single().Ended is not null, 2000));
+        Assert.Equal(0, h.Tracker.ActiveCount);
+        Assert.Equal(SessionOutcome.AcsFault, h.Store.GetAll().Single().Outcome);
     }
 
     [Fact]
