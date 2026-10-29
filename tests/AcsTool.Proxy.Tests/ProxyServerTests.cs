@@ -97,6 +97,20 @@ public class ProxyServerTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Start_CustomCaWithoutPath_MessagePointsToSettingsJson(string? path)
+    {
+        // Doc review finding (f): there is no Settings → TLS page yet; the path is set in settings.json.
+        await using var acs = await FakeAcs.StartAsync();
+        var ex = await Assert.ThrowsAsync<ProxyStartException>(() => ProxyHarness.StartAsync(acs,
+            s => s with { Tls = AcsTool.Core.Net.TlsOptions.Default with { Mode = AcsTool.Core.Net.TlsValidationMode.CustomCa, CustomCaPath = path } }));
+        Assert.Equal("TLS mode CustomCa needs proxy.tls.customCaPath in settings.json.", ex.Message);
+        Assert.DoesNotContain("Settings →", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("empty")]
     [InlineData("garbage")]
     public async Task Start_CustomCaFileEmptyOrGarbage_ProxyStartExceptionWithClearMessage(string kind)
