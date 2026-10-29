@@ -191,7 +191,7 @@ If the ACS sends something that isn't a request (a response, a Fault, an Inform)
 |---|---|---|
 | `✔ Completed` | The ACS answered the CPE's empty POST with an empty response | `Idle`, Retry reset to 0 |
 | `🔒 Auth failed` | `401` even after sending credentials (note *ACS rejected the credentials (401)*) | `Error`, Retry +1 |
-| `⚠ HTTP error` | Any other non-2xx status without a SOAP Fault, including `403` (the proxy calls that Auth failed; see [known differences](troubleshooting.md#known-differences-between-the-simulator-and-the-proxy)), or a non-2xx answer later in the session | `Error`, Retry +1 |
+| `⚠ HTTP error` | Any other non-2xx status without a SOAP Fault, including `403` (the proxy calls that Auth failed; see [known differences](troubleshooting.md#known-differences-between-the-simulator-and-the-proxy)), or a non-2xx answer other than 401 later in the session; also a `407`, even with a Fault | `Error`, Retry +1 |
 | `⚠ ACS fault` | The ACS answered the Inform with a SOAP Fault, with any HTTP status except 401/407 (note shows code and string) | `Error`, Retry +1 |
 | `⚠ Protocol error` | Not an InformResponse to the Inform (including an empty one), an unparseable ACS message, too many messages, or an internal error | `Error`, Retry +1 |
 | `✖ Upstream error` | DNS, connect, TLS, timeout or connection failure; the error class is shown as in [proxy mode](proxy-mode.md#upstream-error-classes) | `Error`, Retry +1 |
