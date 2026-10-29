@@ -7,8 +7,7 @@
     <Grid.RowDefinitions>
       <RowDefinition Height="3*" MinHeight="240" />
       <RowDefinition Height="5" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="2*" MinHeight="150" />
+      <RowDefinition Height="2*" MinHeight="300" />
     </Grid.RowDefinitions>
     <Grid>
       <Grid.ColumnDefinitions>
@@ -145,8 +144,10 @@
       </DockPanel>
       </ScrollViewer>
     </Grid>
-    <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" />
-    <DockPanel Grid.Row="2" Margin="4,2">
+    <!-- Splits the profile editor (row 0) from the lower pane (row 2: running CPEs + feed/detail); review NEW-02. -->
+    <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" />
+    <DockPanel Grid.Row="2">
+    <DockPanel DockPanel.Dock="Top" Margin="4,2">
       <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold">
         <Run Text="Running CPEs  " /><Run Text="{Binding Summary, Mode=OneWay}" FontWeight="Normal" Foreground="{StaticResource MutedBrush}" />
       </TextBlock>
@@ -168,7 +169,7 @@
         </DataGrid.Columns>
       </DataGrid>
     </DockPanel>
-    <Grid Grid.Row="3">
+    <Grid>
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="5*" />
         <ColumnDefinition Width="5" />
@@ -178,5 +179,6 @@
       <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
       <v:SessionDetailView Grid.Column="2" DataContext="{Binding Feed.Detail}" />
     </Grid>
+    </DockPanel>
   </Grid>
 </UserControl>

@@ -61,6 +61,28 @@ public class XamlLayoutTests
     }
 
     [Fact]
+    public void SimulatorSplitter_ResizesEditorAgainstFeedArea()
+    {
+        // Review NEW-02: the splitter sat between the editor and the Auto-sized "Running CPEs" row.
+        var root = Load("SimulatorView.xaml").Root!.Elements().Single();
+        var rows = root.Element(Wpf + "Grid.RowDefinitions")!.Elements().ToList();
+        static int RowOf(XElement e) => int.Parse((string?)e.Attribute("Grid.Row") ?? "0", System.Globalization.CultureInfo.InvariantCulture);
+        var splitter = Assert.Single(root.Elements(Wpf + "GridSplitter"));
+        var r = RowOf(splitter);
+        Assert.Equal("Rows", (string?)splitter.Attribute("ResizeDirection"));
+        Assert.Equal("PreviousAndNext", (string?)splitter.Attribute("ResizeBehavior"));
+        Assert.All(new[] { rows[r - 1], rows[r + 1] }, row => Assert.EndsWith("*", (string)row.Attribute("Height")!, StringComparison.Ordinal));
+        Assert.Equal(r + 1, rows.Count - 1); // nothing below the lower pane
+
+        var above = root.Elements().Where(e => e.Name.LocalName != "Grid.RowDefinitions" && RowOf(e) == r - 1).ToList();
+        var below = root.Elements().Where(e => e.Name.LocalName != "Grid.RowDefinitions" && e.Name.LocalName != "GridSplitter" && RowOf(e) == r + 1).ToList();
+        Assert.Contains(above.Descendants(), d => d.Name.LocalName == "ScrollViewer"); // profile editor
+        var lower = Assert.Single(below);
+        Assert.Contains(lower.Descendants(), d => d.Name.LocalName == "SessionFeedView");
+        Assert.Contains(lower.Descendants(), d => d.Name.LocalName == "DataGrid" && ((string?)d.Attribute("ItemsSource") ?? "").Contains("RunningCpes", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void SimulatorPassword_IsAPasswordBox_NotPlainText()
     {
         // Review m9.
