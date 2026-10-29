@@ -175,6 +175,13 @@ public sealed class CwmpClientSession
             return End(SessionOutcome.Canceled, null, informAccepted, followUps, delivered,
                 timedOut ? "Session hard limit (10 min) reached" : "Session canceled");
         }
+#pragma warning disable CA1031 // an internal failure must end the stored session instead of leaving it InProgress (review m5)
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            ctx.Log.LogError(3201, ex, "Simulated session for {Device} failed", ctx.DeviceId.Key);
+            return End(SessionOutcome.ProtocolError, null, informAccepted, followUps, delivered, $"Internal error: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     private async Task<(TransportResponse Response, ParseResult Parsed, (SessionOutcome Outcome, UpstreamError? Error, string? Note)? Fail)>
@@ -199,7 +206,7 @@ public sealed class CwmpClientSession
         {
             parsed = r.Body.IsEmpty ? ParseResult.EmptyBody : _ctx.Parser.Parse(r.Body.Span, HeaderUtil.Get(r.Headers, "Content-Type"));
             respSummary = _ctx.Summarizer.Summarize(parsed);
-            respCap = HttpMessageCapture.From(null, _ctx.Profile.AcsUrl, status, r.Headers, r.Body.Span, int.MaxValue);
+            respCap = HttpMessageCapture.From(null, _ctx.Profile.AcsUrl, status, r.Headers, r.Body.Span, r.MaxCapturedBodyBytes);
         }
         _ctx.Sink.CompleteExchange(_sid, seq, respCap, respSummary, r.Error, r.Timings);
         ct.ThrowIfCancellationRequested();

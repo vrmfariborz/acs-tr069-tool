@@ -26,12 +26,14 @@ public static class TlsValidatorFactory
     public static string NormalizePin(string pin) =>
         new string((pin ?? string.Empty).Where(Uri.IsHexDigit).ToArray()).ToLowerInvariant();
 
-    public static RemoteCertificateValidationCallback Create(TlsOptions options, Action<TlsInfo> onTls, Func<PhaseTracker>? tracker = null)
+    /// <param name="preloadedCustomCa">CA loaded once by the caller (proxy: per start) so no file I/O happens per session (review m12).</param>
+    public static RemoteCertificateValidationCallback Create(TlsOptions options, Action<TlsInfo> onTls, Func<PhaseTracker>? tracker = null,
+        X509Certificate2? preloadedCustomCa = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(onTls);
-        X509Certificate2? customCa = null;
-        if (options.Mode == TlsValidationMode.CustomCa && !string.IsNullOrEmpty(options.CustomCaPath))
+        var customCa = preloadedCustomCa;
+        if (customCa is null && options.Mode == TlsValidationMode.CustomCa && !string.IsNullOrEmpty(options.CustomCaPath))
         {
             customCa = LoadCertificate(options.CustomCaPath);
         }
@@ -89,7 +91,8 @@ public static class TlsValidatorFactory
         return chain.Build(leaf);
     }
 
-    private static X509Certificate2 LoadCertificate(string path)
+    /// <summary>Loads a PEM or DER/PFX certificate file. Throws IOException/CryptographicException on failure.</summary>
+    public static X509Certificate2 LoadCertificate(string path)
     {
         var data = File.ReadAllBytes(path);
         var text = System.Text.Encoding.ASCII.GetString(data);

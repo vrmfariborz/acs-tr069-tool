@@ -28,16 +28,18 @@ public sealed class AppHarness : IAsyncDisposable
     public TempAppPaths Paths { get; }
     public T Get<T>() where T : notnull => Services.GetRequiredService<T>();
 
-    public static AppHarness Create(Action<SettingsHolder>? configure = null)
+    public static AppHarness Create(Action<SettingsHolder>? configure = null, Action<IServiceCollection>? services = null)
     {
         var paths = new TempAppPaths();
-        var services = new ServiceCollection()
+        var collection = new ServiceCollection();
+        services?.Invoke(collection);
+        var built = collection
             .AddLogging()
             .AddSingleton<IAppPaths>(paths)
             .AddSingleton<IUiDispatcher, SynchronousUiDispatcher>()
             .AddSingleton<IClipboardService, FakeClipboard>()
             .AddAcsToolPresentation();
-        var sp = services.BuildServiceProvider();
+        var sp = built.BuildServiceProvider();
         configure?.Invoke(sp.GetRequiredService<SettingsHolder>());
         return new AppHarness(sp, paths);
     }
@@ -98,6 +100,7 @@ public class ProxyViewModelTests
     [InlineData("not a url")]
     [InlineData("ftp://acs")]
     [InlineData("")]
+    [InlineData("http://user:secret@acs.example:7557/acs")]
     public async Task InvalidUpstream_DisablesStart(string url)
     {
         await using var h = AppHarness.Create();
@@ -109,6 +112,39 @@ public class ProxyViewModelTests
         Assert.True(vm.StartStopCommand.CanExecute(null));
         vm.Port = 0;
         Assert.False(vm.StartStopCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task StartFailsWithNonBindError_FaultedWithBanner_ButtonUsable()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        await using var h = AppHarness.Create(holder => holder.Current = holder.Current with
+        {
+            Proxy = holder.Current.Proxy with
+            {
+                Tls = AcsTool.Core.Net.TlsOptions.Default with { Mode = AcsTool.Core.Net.TlsValidationMode.CustomCa, CustomCaPath = "/nonexistent/ca.pem" },
+            },
+        });
+        var vm = h.Get<ProxyViewModel>();
+        vm.BindAddress = "127.0.0.1";
+        vm.Port = AppHarness.FreePort();
+        vm.UpstreamUrl = acs.BaseUri.ToString();
+        Assert.False(await vm.StartAsync());
+        Assert.Equal(AcsTool.Proxy.ProxyState.Faulted, vm.State);
+        Assert.Contains(h.Get<IBannerService>().Banners, b => b.Key == ProxyViewModel.BindBannerKey && b.Text.Contains("Custom CA", StringComparison.Ordinal));
+        Assert.True(vm.StartStopCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task UpstreamWithCredentials_RejectedWithClearMessage()
+    {
+        await using var h = AppHarness.Create();
+        var vm = h.Get<ProxyViewModel>();
+        vm.UpstreamUrl = "http://user:secret@acs.example/acs";
+        Assert.Contains(vm.GetErrors(nameof(ProxyViewModel.UpstreamUrl)), e => e.ErrorMessage == AcsTool.Core.Net.UrlUtil.UserInfoRejectedMessage);
+        var settings = h.Get<SettingsViewModel>();
+        settings.UpstreamUrl = "https://u:p@acs.example/acs";
+        Assert.False(await settings.SaveAsync());
     }
 
     [Fact]
@@ -292,4 +328,195 @@ public class MainAndSettingsTests
         Assert.Equal(7547, h.Get<SettingsHolder>().Current.Proxy.Port);
         await main.ShutdownAsync();
     }
+
+    [Fact]
+    public async Task PersistedSettings_ReachProxyVmStoreFeedAndEngine_StartKeepsThem()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        await using var h = AppHarness.Create();
+        var port = AppHarness.FreePort();
+        var persisted = AppSettings.Default with
+        {
+            Proxy = AppSettings.Default.Proxy with { BindAddress = "127.0.0.1", Port = port, UpstreamUrl = acs.BaseUri.ToString(), CookieMode = CookieMode.ManagedPerCpe },
+            Capture = AppSettings.Default.Capture with { MaxSessions = 10, MaxFeedItems = 50 },
+            Simulator = AppSettings.Default.Simulator with { MaxConcurrentSessions = 3 },
+        };
+        await h.Get<ISettingsStore>().SaveAsync(persisted, default);
+
+        // Same order as App.OnStartup: the view models (and the store/engine behind them) are resolved before settings load.
+        var main = h.Get<MainViewModel>();
+        await main.InitializeAsync();
+
+        Assert.Equal("127.0.0.1", main.Proxy.BindAddress);
+        Assert.Equal(port, main.Proxy.Port);
+        Assert.Equal(acs.BaseUri.ToString(), main.Proxy.UpstreamUrl);
+        Assert.Equal(CookieMode.ManagedPerCpe, main.Proxy.CookieMode);
+        Assert.Equal(50, main.Proxy.Feed.MaxItems);
+        Assert.Equal(50, main.Simulator.Feed.MaxItems);
+
+        var store = h.Get<InMemorySessionStore>();
+        Assert.Equal(10, store.Limits.MaxSessions);
+        for (var i = 0; i < 30; i++)
+        {
+            store.EndSession(Kit.StartSession(store, $"E{i}"), SessionOutcome.Completed);
+        }
+        Assert.Equal(10, store.Stats.Sessions);
+
+        var engine = h.Get<AcsTool.Simulator.Engine.SimulationEngine>();
+        await engine.StartProfileAsync(DefaultProfiles.Tr098() with { AcsUrl = acs.BaseUri + "acs" }, sendBootNow: false, default);
+        Assert.Equal(3, engine.MaxConcurrentSessions);
+        await engine.StopAllAsync();
+
+        Assert.True(await main.Proxy.StartAsync());
+        Assert.Equal(port, h.Get<SettingsHolder>().Current.Proxy.Port);
+        Assert.Equal(acs.BaseUri.ToString(), h.Get<SettingsHolder>().Current.Proxy.UpstreamUrl);
+        await main.ShutdownAsync();
+        var reloaded = await h.Get<ISettingsStore>().LoadAsync(default);
+        Assert.Equal(port, reloaded.Proxy.Port);
+        Assert.Equal(CookieMode.ManagedPerCpe, reloaded.Proxy.CookieMode);
+    }
+
+    [Fact]
+    public async Task SettingsWindowSave_WhileStopped_UpdatesProxyTabAndLimits()
+    {
+        await using var h = AppHarness.Create();
+        var main = h.Get<MainViewModel>();
+        await main.InitializeAsync();
+        var settingsVm = h.Get<SettingsViewModel>();
+        settingsVm.Port = 18123;
+        settingsVm.UpstreamUrl = "http://acs.changed:9000/acs";
+        settingsVm.MaxFeedItems = 150;
+        Assert.True(await settingsVm.SaveAsync());
+        Assert.Equal(18123, main.Proxy.Port);
+        Assert.Equal("http://acs.changed:9000/acs", main.Proxy.UpstreamUrl);
+        Assert.Equal(150, main.Proxy.Feed.MaxItems);
+        await main.ShutdownAsync();
+    }
+
+    [Fact]
+    public async Task SettingsWindowSave_WhileRunning_SurvivesStopThenStart()
+    {
+        // Review R-M1: a save while running ("applies on the next Start") was overwritten by the tab's stale values.
+        await using var acs = await FakeAcs.StartAsync();
+        await using var acs2 = await FakeAcs.StartAsync();
+        await using var h = AppHarness.Create();
+        var main = h.Get<MainViewModel>();
+        await main.InitializeAsync();
+        var proxy = main.Proxy;
+        proxy.BindAddress = "127.0.0.1";
+        proxy.Port = AppHarness.FreePort();
+        proxy.UpstreamUrl = acs.BaseUri.ToString();
+        Assert.True(await proxy.StartAsync());
+
+        var newPort = AppHarness.FreePort();
+        var settingsVm = h.Get<SettingsViewModel>();
+        Assert.Equal("0.0.0.0", settingsVm.BindAddress); // loaded at startup, stale after the Proxy-tab Start
+        settingsVm.Refresh(); // as when the Settings window opens
+        Assert.Equal("127.0.0.1", settingsVm.BindAddress);
+        settingsVm.Port = newPort;
+        settingsVm.UpstreamUrl = acs2.BaseUri.ToString();
+        Assert.True(await settingsVm.SaveAsync());
+        Assert.Equal(acs.BaseUri.ToString(), proxy.UpstreamUrl); // running: tab untouched
+
+        await proxy.StopAsync();
+        Assert.Equal(acs2.BaseUri.ToString(), proxy.UpstreamUrl);
+        Assert.Equal(newPort, proxy.Port);
+
+        Assert.True(await proxy.StartAsync());
+        var persisted = h.Get<SettingsHolder>().Current.Proxy;
+        Assert.Equal(acs2.BaseUri.ToString(), persisted.UpstreamUrl);
+        Assert.Equal(newPort, persisted.Port);
+        Assert.Equal($"http://127.0.0.1:{newPort}", Assert.Single(proxy.BoundUrls));
+        await main.ShutdownAsync();
+    }
+
+    [Fact]
+    public async Task StartFails_TabReloadsPersistedSettings()
+    {
+        await using var h = AppHarness.Create(holder => holder.Current = holder.Current with
+        {
+            Proxy = holder.Current.Proxy with
+            {
+                Tls = AcsTool.Core.Net.TlsOptions.Default with { Mode = AcsTool.Core.Net.TlsValidationMode.CustomCa, CustomCaPath = "/nonexistent/ca.pem" },
+            },
+        });
+        var proxy = h.Get<ProxyViewModel>();
+        proxy.BindAddress = "127.0.0.1";
+        proxy.Port = AppHarness.FreePort();
+        proxy.UpstreamUrl = "http://acs.example:7547/acs";
+        Assert.False(await proxy.StartAsync());
+        Assert.Equal(AcsTool.Proxy.ProxyState.Faulted, proxy.State);
+        var persisted = h.Get<SettingsHolder>().Current.Proxy;
+        Assert.Equal(persisted.Port, proxy.Port);
+        Assert.Equal(persisted.UpstreamUrl, proxy.UpstreamUrl);
+        Assert.Equal(persisted.Tls!.Mode, proxy.TlsMode);
+        Assert.Equal("http://acs.example:7547/acs", persisted.UpstreamUrl);
+    }
 }
+
+/// <summary>Simulates DPAPI data protected by another Windows user: "dpapi:" values cannot be decrypted.</summary>
+public sealed class ForeignDpapiProtector : ISecretProtector
+{
+    public string Protect(string plain) => "plain:" + plain;
+
+    public string Unprotect(string stored) => stored.StartsWith("dpapi:", StringComparison.Ordinal)
+        ? throw new SecretUnprotectException("The stored password could not be decrypted for this Windows user; re-enter it.")
+        : stored.StartsWith("plain:", StringComparison.Ordinal) ? stored[6..] : stored;
+}
+
+public class SecretTests
+{
+    [Fact]
+    public async Task PasswordBoxEcho_AfterLoad_IsNotAnEdit_CiphertextKept()
+    {
+        // Review m9: the PasswordBox echoes the loaded value (or "" for null) back; that must not count as a user change.
+        await using var h = AppHarness.Create(services: s => s.AddSingleton<ISecretProtector, ForeignDpapiProtector>());
+        var profiles = h.Get<IProfileStore>();
+        await profiles.SaveAsync(DefaultProfiles.Tr098("Foreign", "SIMF0001") with { PasswordProtected = "dpapi:AAAA" }, default);
+        await profiles.SaveAsync(DefaultProfiles.Tr098("Readable", "SIMR0001") with { PasswordProtected = "plain:secret" }, default);
+        var sim = h.Get<SimulatorViewModel>();
+        await sim.LoadAsync();
+        var foreign = Assert.Single(sim.Profiles, p => p.Name == "Foreign");
+        var readable = Assert.Single(sim.Profiles, p => p.Name == "Readable");
+
+        foreign.Password = ""; // PasswordBox echo of null
+        Assert.True(foreign.PasswordUnreadable);
+        Assert.Equal("dpapi:AAAA", foreign.ToProfile().PasswordProtected);
+
+        readable.Password = "secret"; // re-push of the same value
+        Assert.Equal("plain:secret", readable.ToProfile().PasswordProtected);
+
+        foreign.Password = "typed";
+        Assert.False(foreign.PasswordUnreadable);
+        Assert.Equal("plain:typed", foreign.ToProfile().PasswordProtected);
+        readable.Password = "";
+        Assert.Null(readable.ToProfile().PasswordProtected); // clearing a real password is an edit
+    }
+
+    [Fact]
+    public async Task UndecryptablePassword_BannerShown_CiphertextKeptOnSave_StartRefused()
+    {
+        await using var h = AppHarness.Create(services: s => s.AddSingleton<ISecretProtector, ForeignDpapiProtector>());
+        var profiles = h.Get<IProfileStore>();
+        var original = DefaultProfiles.Tr098("Foreign", "SIMF0001") with { Username = "cpe", PasswordProtected = "dpapi:AAAA" };
+        await profiles.SaveAsync(original, default);
+
+        var sim = h.Get<SimulatorViewModel>();
+        await sim.LoadAsync();
+        var editor = Assert.Single(sim.Profiles);
+        Assert.True(editor.PasswordUnreadable);
+        Assert.Null(editor.Password);
+        Assert.Contains(h.Get<IBannerService>().Banners, b => b.Key == SimulatorViewModel.PasswordBannerKey && b.Kind == BannerKind.Warning);
+
+        editor.Name = "Foreign (renamed)";
+        Assert.Equal("dpapi:AAAA", editor.ToProfile().PasswordProtected); // not wiped by an unrelated edit
+
+        Assert.False(await sim.StartSelectedAsync(sendBootNow: false));
+        Assert.Contains(h.Get<IBannerService>().Banners, b => b.Key == "sim-start" && b.Text.Contains("re-enter", StringComparison.Ordinal));
+
+        editor.Password = "new-secret";
+        Assert.False(editor.PasswordUnreadable);
+        Assert.Equal("plain:new-secret", editor.ToProfile().PasswordProtected);
+    }
+}
+

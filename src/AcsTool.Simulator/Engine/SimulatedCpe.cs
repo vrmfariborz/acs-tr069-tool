@@ -165,7 +165,17 @@ public sealed class SimulatedCpe : IAsyncDisposable
                 }
                 if (runSession && _events.Count > 0)
                 {
-                    await RunSessionAsync(ct).ConfigureAwait(false);
+                    try
+                    {
+                        await RunSessionAsync(ct).ConfigureAwait(false);
+                    }
+#pragma warning disable CA1031 // one failed session must not kill the CPE loop (review m5)
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+                    {
+                        _log.LogError(3302, ex, "Session for {Device} failed", DeviceKey);
+                        SetState(new CpeState(CpeStateKind.Error, State.RetryCount + 1, null, ex.Message, null));
+                    }
                 }
             }
         }

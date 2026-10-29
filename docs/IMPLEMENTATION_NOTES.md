@@ -33,7 +33,7 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
   - A trailing empty POST ends the session at once.
   - Otherwise the sweeper ends it as Completed/AcsFault/CpeFault after `CompletionGrace` = 2 s of idle time. The sweeper runs every 1 s (the plan said 5 s; shortened for this rule), so the UI can show "in progress" for up to about 3 s.
 - The T2.5 acceptance test says "5 exchanges", but the flow it describes has 4 HTTP requests: Inform, empty, GPVResponse, empty. The test asserts those 4, in order.
-- Set-Cookie rewriting (strip `Domain`, rewrite `Path`) was pulled forward from M5. The Secure flag is stripped only when the CPE leg is HTTP and the upstream is HTTPS.
+- Set-Cookie rewriting was pulled forward from M5: `Domain` is stripped; the Secure flag is stripped only when the CPE leg is HTTP and the upstream is HTTPS; a `Path` that the CPE's request path would not match (upstream base path or `PathMode=Fixed`, e.g. `Path=/tr069` while the CPE posts to `/acs`) is rewritten to `Path=/` with a note (review m13).
 - All four upstream TLS modes are implemented. Only `Strict` is exercised by tests; HTTPS tests are M6.
 - The DNS-failure test depends on the environment. In sandboxes where every name resolves (a DNS sinkhole), it accepts Connect/Timeout instead of `Dns`.
 
@@ -65,3 +65,39 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 4. Select a session. The Raw tab shows the XML, the Pretty toggle formats it, and Authorization is redacted until revealed.
 5. Close the window. The proxy and simulator stop, and the process exits within a few seconds.
 6. Run `AcsTool.exe --smoke-exit`. It exits with code 0.
+7. Resize the main window slowly across its minimum size on both tabs. Scrollbars appear only below the minimum, the Simulator tab shows no scrollbar at the default size, and the Simulator splitter resizes the profile editor against the lower pane. (Rendering can't be checked on Linux.)
+8. Password binding (review R2-M1). On a fresh install (no profiles or settings file yet), select the default profile and type a password into the Password field. Use credentials that an ACS requiring Basic or Digest auth accepts. Save and restart the app. Start the profile and click "Send Inform now". The CPE authenticates: the session shows an auth challenge followed by success and ends Completed, not AuthFailed. The password field shows dots and never plain text.
+
+## Review fixes (docs/REVIEW_M0-M4.md, branch fix/review-m0-m4)
+
+Fixed, each with tests: M1, M2, M3, M4, M5, M6, m1, m5, m6, m8, m10, m11, m12 (partly), m13, m14, plus the user-reported clipped-tab layout bug.
+
+Decisions and deviations:
+- **M1/M2:** Persisted settings reach their consumers reactively through `SettingsHolder.Changed`, not by loading settings before DI resolution. Loading twice would lose the corrupt-settings-file banner. Consumers are the Proxy tab (only while stopped and editable), store limits, feed size/order and the status bar. A changed simulator concurrency limit takes effect the next time a profile starts while no CPE is running. The old gate is not disposed, because in-flight waiters may still hold it.
+- **M4:** Summaries are still parsed from the full captured body, but each list keeps at most 200 items plus an "… and K more" field. The Raw view holds the full captured body. The capture budget is an estimate: body bytes + 2 × (header and summary field characters) + warnings.
+- **M6:** While paused, the feed coalesces updates by session id. Above 10,000 pending ids, or when a resync batch arrives, it drops the list and does a full resync from the store on resume. Sessions evicted during the pause therefore do not reappear.
+- **m8:** An undecryptable DPAPI password throws `SecretUnprotectException`. The editor shows a warning and keeps the stored ciphertext unless the password is retyped, and Start is refused with a validation error. Real DPAPI behaviour can't be tested on Linux, so tests use a fake protector.
+- **m10:** Upstream URLs containing user:password@ are rejected by both validators. As a second line of defence, the proxy redacts userinfo in logs and session targets (warning event 1013).
+- **m13:** Upstream Set-Cookie Path values that the CPE's request path doesn't path-match (RFC 6265 §5.1.4) become `Path=/`, with a note on the exchange. The earlier note on cookie paths was corrected.
+- **m14:** Idle/grace and end-to-end tests now use `FakeTimeProvider`. Coverage was added for Basic auth through the proxy, the ManagedPerCpe cookie jar, and byte-identical responses with multi-valued headers.
+- **UI layout:** Every tab (main and settings windows) is hosted in a ScrollViewer. Views are bound to the viewport size, with MinWidth/MinHeight, so star rows and DataGrid virtualization still work when there is room, and scrollbars appear only when the window is smaller. The simulator profile editor also scrolls on its own. Fixed widths were replaced by star/Auto + MinWidth. Rendering can't be checked on Linux; `XamlLayoutTests` lint the XAML instead, and visual confirmation on Windows is still pending.
+
+Deferred:
+- **m12 (part):** The upstream `SocketsHttpHandler` is still created inside the tracker lock. The custom CA is now preloaded at Start (a missing or invalid file fails Start with `ProxyStartException`), so creating the handler does no I/O. Moving it out of the lock would mean restructuring `Resolve`, which is out of proportion to the remaining risk.
+- **Outside the requested scope, unchanged:** m2 (a late trailing empty POST becomes an orphan row), m3 (cookie-pair correlation ambiguity), m4 (simulator capture shows post-response cookies), m7 (pretty-print race), m15 (Settings window ✕ / OnClosing robustness), and nits n1–n8.
+
+Follow-up after the re-review and TesterBot's re-verification (fast-forwarded to TesterBot's `tester/m0-m4-fix`, d355a8a):
+- **R-M1:** The Proxy tab reloads the persisted proxy settings after Stop and after a failed Start. The Settings window (a singleton view model) also refreshes from the current settings each time it opens. Before this, a save made while the proxy was running was overwritten by stale tab values on Stop → Start, and the Settings window could show stale values and write them back. M1 is now fully fixed.
+- **m9:** The simulator password is a `PasswordBox` bound through the `PasswordBoxAssistant` attached property; values pushed by the view model are not echoed back. A PasswordBox can't hold null, so it reports "" after an empty or undecryptable password is loaded. The editor therefore doesn't count a null ↔ "" change as an edit, which keeps the m8 ciphertext-keeping intact. There is no "show password" toggle.
+- **R-m1/NEW-01:** The Simulator view MinHeight went from 760 to 560, and the row minimums (240 + 300) fit within it. The editor MinHeight went from 520 to 360. At the default window size there is no outer scrollbar. The inner editor scrollbar can still appear when the Running CPEs list is tall.
+- **NEW-02:** The Simulator layout now has three rows: editor, splitter, and a lower pane holding Running CPEs plus feed/detail. The splitter resizes the editor against that whole pane, not against the Auto-sized Running CPEs row.
+- **BUG-01:** A SOAP Fault answering the Inform ends the proxy session as AcsFault immediately. This is checked before the HTTP status, because SOAP 1.1 faults usually come with HTTP 500. A Fault answering any later CPE message still leaves the session open, because the ACS may continue. TesterBot's repro is un-skipped and the characterization test was flipped.
+- **BUG-03:** The environment-dependent network tests use `Xunit.SkippableFact` (1.5.23; xUnit 2.9 has no built-in dynamic skip), so they report Skipped instead of Passed.
+- **R2-M1** (re-review 2): The PasswordBox never forwarded typing for profiles whose password starts out null. Those are all the default profiles and every profile without a password. The cause was that PasswordChanged was only hooked when the bound value changed, and a null → null binding never fires. A separate `PasswordBoxAssistant.Attach="True"` now hooks the event independently of the value, with no double subscription. The echo logic moved to the UI-free `PasswordSync`, which is unit-tested with a fake box, and a XAML lint test asserts `Attach="True"`. Loading a profile is still not counted as a user edit (m8/m9). Smoke step 8 covers this on Windows.
+- **R2-n1:** The Fault-to-Inform rule (BUG-01) does not apply to HTTP 401 or 407. A 401 still goes through the auth challenge and retry logic. A 407 keeps its existing HttpError handling.
+- **R2-n4:** The nested DockPanels in `SimulatorView.xaml` were reindented. This is whitespace only.
+- **CI and `ACSTOOL_SKIP_NET_TIMEOUT`:** Nothing in CI sets the variable (checked `.github/workflows`, `build.sh` and `build.ps1`; there are no runsettings files). There are now guards against it being set: the Linux CI job has a step that fails if it is set, and `build.sh` / `build.ps1` exit with an error when `CI=true` and the variable is set.
+
+Deferred after the final review (re-review 3, @ 1b8fe03):
+- **R3-n1:** The Windows CI job never runs `build.ps1` or the tests. It only builds, publishes and runs `--smoke-exit`. The suggested fix is to add a `./build.ps1 -NoCoverage` step to the Windows job.
+- **Still deferred from earlier rounds:** R2-n2 (an empty POST after a Fault becomes an orphan session; to be folded into the m2 fix), R2-n3 (Settings opened from code-behind), and R-n1–R-n6, along with m2, m3, m4, m7, m15, part of m12, and n1–n8.

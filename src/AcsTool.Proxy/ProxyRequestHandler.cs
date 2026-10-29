@@ -82,7 +82,7 @@ public sealed class ProxyRequestHandler
                     respSummary = _summarizer.Summarize(respParsed);
                     respCap = HttpMessageCapture.From(null, result.UpstreamUri.ToString(), status, result.Headers, result.Body.Span, _capture.MaxCapturedBodyBytes);
                 }
-                var downstreamHeaders = result.IsFailure ? [] : _rewriter.ForDownstreamResponse(result, req.IsHttps, _upstreamHttps, notes).ToList();
+                var downstreamHeaders = result.IsFailure ? [] : _rewriter.ForDownstreamResponse(result, req.IsHttps, _upstreamHttps, notes, req.PathAndQuery).ToList();
                 var outcome = CpeSessionTracker.EvaluateEnd(session, parsed.Kind, result, respParsed?.Kind, notes);
                 var timings = result.Timings with { Total = _time.GetElapsedTime(ts) };
                 _sink.CompleteExchange(session.SessionId, seq, respCap, respSummary, result.Error, timings, notes);

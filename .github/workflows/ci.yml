@@ -8,6 +8,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: '8.0.x' }
+      - name: guard - network tests must not be skipped in CI
+        run: |
+          if [ -n "${ACSTOOL_SKIP_NET_TIMEOUT:-}" ]; then
+            echo "::error::ACSTOOL_SKIP_NET_TIMEOUT is set; CI must run Connect_UnroutableAddress_ConnectTimedOut"; exit 1
+          fi
       - run: ./build.sh
   windows:
     runs-on: windows-latest

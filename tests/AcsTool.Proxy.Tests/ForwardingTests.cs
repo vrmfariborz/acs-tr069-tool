@@ -7,6 +7,7 @@ using AcsTool.Core.Net;
 using AcsTool.Core.Sessions;
 using AcsTool.Core.Settings;
 using AcsTool.Testing;
+using Microsoft.Extensions.Time.Testing;
 
 namespace AcsTool.Proxy.Tests;
 
@@ -267,6 +268,20 @@ public class ForwardingTests
     }
 
     [Fact]
+    public async Task SetCookiePath_ForUpstreamBasePath_RewrittenSoCpeReplaysIt()
+    {
+        await using var acs = await FakeAcs.StartAsync(o => o.SetCookie = "fakeacs-sid={n}; Path=/tr069");
+        await using var h = await ProxyHarness.StartAsync(acs, s => s with { UpstreamUrl = acs.Url("/tr069") });
+        using var c1 = ProxyHarness.CpeClient(useCookies: false);
+        using var r1 = await c1.SendAsync(ProxyHarness.Post(h.Url("/acs"), ProxyHarness.Inform()));
+        Assert.Equal("fakeacs-sid=1; Path=/", r1.Headers.GetValues("Set-Cookie").Single());
+        Assert.StartsWith("/tr069", acs.Received[0].PathAndQuery, StringComparison.Ordinal);
+        using var r2 = await c1.SendAsync(ProxyHarness.Post(h.Url("/acs"), null));
+        var s = await h.WaitForEndedAsync();
+        Assert.Contains("Set-Cookie Path /tr069 rewritten to / (CPE posts to /acs)", s.Exchanges[0].Notes);
+    }
+
+    [Fact]
     public async Task DigestAuth_RelayedTransparently_SingleSession()
     {
         await using var acs = await FakeAcs.StartAsync(o => o.Digest = ("cpe", "pw", "acs"));
@@ -313,13 +328,13 @@ public class ForwardingTests
     public async Task IdleSession_AbandonedBySweeper()
     {
         await using var acs = await FakeAcs.StartAsync();
-        await using var h = await ProxyHarness.StartAsync(acs, s => s with { SessionIdleTimeoutSeconds = 1 });
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        await using var h = await ProxyHarness.StartAsync(acs, s => s with { SessionIdleTimeoutSeconds = 1 }, time);
         using var client = ProxyHarness.CpeClient();
         (await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()))).Dispose();
         h.Tracker.Sweep(); // too early: still active
         Assert.Equal(1, h.Tracker.ActiveCount);
-        await Task.Delay(1200);
-        h.Tracker.Sweep();
+        time.Advance(TimeSpan.FromSeconds(1)); // the sweeper timer runs on the fake clock
         Assert.Equal(SessionOutcome.Abandoned, (await h.WaitForEndedAsync()).Outcome);
     }
 
@@ -330,18 +345,114 @@ public class ForwardingTests
             .ExpectInform().RespondInformResponse()
             .ExpectEmpty().Send(new GetParameterValuesMessage(["InternetGatewayDevice.DeviceInfo."]))
             .ExpectResponse<GetParameterValuesResponseMessage>().End204());
-        await using var h = await ProxyHarness.StartAsync(acs);
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        await using var h = await ProxyHarness.StartAsync(acs, time: time);
         using var client = ProxyHarness.CpeClient();
         (await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()))).Dispose();
         using var r2 = await client.SendAsync(ProxyHarness.Post(h.Url(), null));
         var id = ProxyHarness.IdOf(await r2.Content.ReadAsByteArrayAsync());
         (await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Soap(new GetParameterValuesResponseMessage([]), id)))).Dispose();
-        h.Tracker.Sweep(); // within the grace period
+        time.Advance(CpeSessionTracker.SweepInterval); // 1 s: still within the 2 s grace
         Assert.Equal(1, h.Tracker.ActiveCount);
-        await Task.Delay(CpeSessionTracker.CompletionGrace + TimeSpan.FromMilliseconds(200));
-        h.Tracker.Sweep();
+        time.Advance(CpeSessionTracker.CompletionGrace);
         var s = await h.WaitForEndedAsync();
         Assert.Equal(SessionOutcome.Completed, s.Outcome);
         Assert.Equal(3, s.Exchanges.Count);
     }
+
+    [Fact]
+    public async Task UpstreamUrlWithCredentials_NotForwarded_RedactedInSessionTarget()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        var withCreds = new UriBuilder(acs.BaseUri) { UserName = "user", Password = "secret" }.Uri.ToString();
+        await using var h = await ProxyHarness.StartAsync(acs, s => s with { UpstreamUrl = withCreds });
+        using var client = ProxyHarness.CpeClient();
+        (await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()))).Dispose();
+        Assert.True(await TestUtil.WaitUntilAsync(() => acs.Received.Count == 1));
+        Assert.Null(acs.Received[0].Header("Authorization"));
+        var s = Assert.Single(h.Store.GetAll());
+        Assert.DoesNotContain("secret", s.TargetUrl, StringComparison.Ordinal);
+        Assert.DoesNotContain("user", s.TargetUrl, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProxyStoppedDuringInFlightExchange_SessionCanceled()
+    {
+        await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s.ExpectInform().Delay(TimeSpan.FromSeconds(30)).RespondInformResponse());
+        await using var h = await ProxyHarness.StartAsync(acs);
+        using var client = ProxyHarness.CpeClient();
+        var pending = client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()));
+        Assert.True(await TestUtil.WaitUntilAsync(() => acs.Received.Count == 1));
+        await h.Server.StopAsync(default);
+        try
+        {
+            (await pending).Dispose();
+        }
+        catch (HttpRequestException)
+        {
+            // the connection may be closed by the stopping server
+        }
+        var s = Assert.Single(h.Store.GetAll());
+        Assert.Equal(SessionOutcome.Canceled, s.Outcome);
+    }
+
+    [Fact]
+    public async Task BasicAuth_ThroughProxy_ChallengeThenSuccess_SingleSession()
+    {
+        await using var acs = await FakeAcs.StartAsync(o => o.Basic = ("cpe", "pw"));
+        await using var h = await ProxyHarness.StartAsync(acs);
+        using var handler = new SocketsHttpHandler { Credentials = new NetworkCredential("cpe", "pw"), UseProxy = false };
+        using var client = new HttpClient(handler);
+        using var r1 = await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()));
+        Assert.Equal(HttpStatusCode.OK, r1.StatusCode);
+        using var r2 = await client.SendAsync(ProxyHarness.Post(h.Url(), null));
+        Assert.Equal(HttpStatusCode.NoContent, r2.StatusCode);
+        var s = await h.WaitForEndedAsync();
+        Assert.Single(h.Store.GetAll());
+        Assert.Equal(SessionOutcome.Completed, s.Outcome);
+        Assert.Equal(401, s.Exchanges[0].Response!.StatusCode);
+        Assert.Contains("AuthChallenge", s.Exchanges[0].Notes);
+        Assert.StartsWith("Basic ", acs.Received[1].Header("Authorization"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ManagedPerCpe_ProxyKeepsCookieJar_AndSendsCookieUpstream()
+    {
+        await using var acs = await FakeAcs.StartAsync(o => o.SetCookie = "fakeacs-sid={n}; Path=/");
+        await using var h = await ProxyHarness.StartAsync(acs, s => s with { CookieMode = CookieMode.ManagedPerCpe });
+        using var client = ProxyHarness.CpeClient(useCookies: false);
+        using var r1 = await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()));
+        Assert.False(r1.Headers.Contains("Set-Cookie")); // consumed by the proxy
+        using var r2 = await client.SendAsync(ProxyHarness.Post(h.Url(), null, ("Cookie", "cpe-own=1")));
+        Assert.Equal(HttpStatusCode.NoContent, r2.StatusCode);
+        Assert.Equal("fakeacs-sid=1", acs.Received[1].Header("Cookie")); // from the proxy's jar, CPE cookie not forwarded
+        var s = await h.WaitForEndedAsync();
+        Assert.Contains("Set-Cookie consumed by proxy (ManagedPerCpe)", s.Exchanges[0].Notes);
+    }
+
+    [Fact]
+    public async Task ResponseDirection_BodyByteIdentical_MultiValuedHeadersRelayedSeparately()
+    {
+        var body = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(System.Text.Encoding.UTF8.GetBytes("<x>\r\nGrüße ✓</x>\r\n")).ToArray();
+        await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s.ExpectInform().RespondWith((_, _) => new FakeAcsResponse
+        {
+            Status = 200,
+            Body = body,
+            Headers =
+            [
+                new("Content-Type", "text/xml; charset=utf-8"),
+                new("Set-Cookie", "a=1; Path=/"),
+                new("Set-Cookie", "b=2; Path=/"),
+                new("WWW-Authenticate", "Basic realm=\"x\""),
+                new("WWW-Authenticate", "Digest realm=\"x\", nonce=\"n\", qop=\"auth\""),
+            ],
+        }));
+        await using var h = await ProxyHarness.StartAsync(acs);
+        using var client = ProxyHarness.CpeClient(useCookies: false);
+        using var r = await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()));
+        Assert.Equal(SHA256.HashData(body), SHA256.HashData(await r.Content.ReadAsByteArrayAsync()));
+        Assert.Equal(["a=1; Path=/", "b=2; Path=/"], r.Headers.GetValues("Set-Cookie").ToArray());
+        Assert.Equal(2, r.Headers.WwwAuthenticate.Count);
+    }
 }
+

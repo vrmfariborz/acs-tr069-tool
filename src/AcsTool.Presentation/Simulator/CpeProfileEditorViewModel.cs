@@ -84,6 +84,23 @@ public sealed partial class CpeProfileEditorViewModel : ObservableObject
     [ObservableProperty] private string _acsUrl = "";
     [ObservableProperty] private string? _username;
     [ObservableProperty] private string? _password;
+
+    /// <summary>The stored password could not be decrypted (another Windows user/machine). It is kept unchanged until re-entered.</summary>
+    [ObservableProperty] private bool _passwordUnreadable;
+
+    private bool _loading;
+    private bool _passwordEdited;
+
+    partial void OnPasswordChanged(string? oldValue, string? newValue)
+    {
+        // A PasswordBox cannot hold null: after loading an empty or undecryptable password it echoes "" back.
+        // null <-> "" is therefore not a user edit and must not replace the stored ciphertext (review m8/m9).
+        if (!_loading && !(string.IsNullOrEmpty(oldValue) && string.IsNullOrEmpty(newValue)))
+        {
+            _passwordEdited = true;
+            PasswordUnreadable = false;
+        }
+    }
     [ObservableProperty] private CwmpVersion _version;
     [ObservableProperty] private int _requestTimeoutSeconds;
     [ObservableProperty] private string _customEvent = "";
@@ -122,7 +139,22 @@ public sealed partial class CpeProfileEditorViewModel : ObservableObject
         SerialNumber = p.DeviceId.SerialNumber;
         AcsUrl = p.AcsUrl;
         Username = p.Username;
-        Password = string.IsNullOrEmpty(p.PasswordProtected) ? null : _secrets.Unprotect(p.PasswordProtected);
+        _loading = true;
+        try
+        {
+            _passwordEdited = false;
+            PasswordUnreadable = false;
+            Password = string.IsNullOrEmpty(p.PasswordProtected) ? null : _secrets.Unprotect(p.PasswordProtected);
+        }
+        catch (SecretUnprotectException)
+        {
+            Password = null;
+            PasswordUnreadable = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
         Version = p.Version;
         RequestTimeoutSeconds = p.RequestTimeoutSeconds;
         Events.Clear();
@@ -172,7 +204,8 @@ public sealed partial class CpeProfileEditorViewModel : ObservableObject
         DeviceId = new DeviceIdStruct(Manufacturer.Trim(), Oui.Trim().ToUpperInvariant(), ProductClass.Trim(), SerialNumber.Trim()),
         AcsUrl = AcsUrl.Trim(),
         Username = string.IsNullOrWhiteSpace(Username) ? null : Username.Trim(),
-        PasswordProtected = string.IsNullOrEmpty(Password) ? null : _secrets.Protect(Password),
+        // Unchanged password: keep the stored ciphertext as is (never wipe an undecryptable one; review m8).
+        PasswordProtected = !_passwordEdited ? _original.PasswordProtected : string.IsNullOrEmpty(Password) ? null : _secrets.Protect(Password),
         Version = Version,
         RequestTimeoutSeconds = RequestTimeoutSeconds,
         DefaultEvents = Events.Where(e => e.IsSelected).Select(e => new EventStruct(e.Code, e.IsMethodEvent ? e.CommandKey : "")).ToList(),
@@ -197,6 +230,7 @@ public sealed partial class CpeProfileEditorViewModel : ObservableObject
     public void AcceptSaved(CpeProfile saved)
     {
         _original = saved;
+        _passwordEdited = false;
         IsDirty = false;
     }
 

@@ -61,4 +61,17 @@ public class SummarizerTests
         Assert.Equal(9003u, s.Fault!.FaultCode);
         Assert.Contains(s.Fields, f => f.Key == "SPV fault" && f.Value.Contains("9008", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Summarize_HugeGpvResponse_FieldsCappedWithMoreMarker()
+    {
+        var values = Enumerable.Range(0, 5000).Select(i => new ParameterValue($"Device.X.{i}.Value", new string('v', 50))).ToList();
+        var body = new AcsTool.Core.Building.CwmpMessageBuilder().Build(new GetParameterValuesResponseMessage(values), AcsTool.Core.Cwmp.CwmpVersion.V1_0, new CwmpHeader("1"));
+        var sum = _summ.Summarize(_parser.Parse(body));
+        Assert.Equal("GPVResponse ×5000", sum.Title);
+        Assert.Equal(MessageSummarizer.MaxListedItems, sum.Fields.Count(f => f.Key.StartsWith("Device.X.", StringComparison.Ordinal)));
+        Assert.Single(sum.Fields, f => f.Key == "… and 4800 more");
+        Assert.True(sum.Fields.Count < MessageSummarizer.MaxListedItems + 10);
+    }
 }
+

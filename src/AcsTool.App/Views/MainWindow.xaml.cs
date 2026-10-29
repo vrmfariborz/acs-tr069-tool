@@ -38,6 +38,7 @@ public partial class MainWindow : Window
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
+        _vm.Settings.Refresh();
         var window = new SettingsWindow(_vm.Settings) { Owner = this };
         window.ShowDialog();
     }

@@ -49,9 +49,9 @@ public sealed partial class SettingsViewModel : ObservableValidator
     public IReadOnlyList<FailureMode> FailureModes { get; } = Enum.GetValues<FailureMode>();
 
     public static ValidationResult? ValidateUrl(string? value, ValidationContext context) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps)
-            ? ValidationResult.Success
-            : new ValidationResult("Must be an absolute http:// or https:// URL");
+        !(Uri.TryCreate(value, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
+            ? new ValidationResult("Must be an absolute http:// or https:// URL")
+            : u.UserInfo.Length > 0 ? new ValidationResult(AcsTool.Core.Net.UrlUtil.UserInfoRejectedMessage) : ValidationResult.Success;
 
     public void LoadFrom(AppSettings s)
     {
@@ -130,6 +130,12 @@ public sealed partial class SettingsViewModel : ObservableValidator
 
     [RelayCommand]
     private void Cancel() => LoadFrom(_holder.Current);
+
+    /// <summary>
+    /// Reloads the fields from the current settings; call when the Settings window opens, otherwise values written since
+    /// startup (e.g. by a Proxy-tab Start) would be shown stale and written back on Save (review R-M1).
+    /// </summary>
+    public void Refresh() => LoadFrom(_holder.Current);
 
     [RelayCommand]
     private void RestoreDefaults() => LoadFrom(AppSettings.Default with { Simulator = _base.Simulator, Ui = _base.Ui, Logging = _base.Logging });

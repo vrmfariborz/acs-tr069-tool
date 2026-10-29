@@ -15,7 +15,24 @@ public interface IAppPaths
 public interface ISecretProtector
 {
     string Protect(string plain);
+    /// <summary>Decrypts a stored secret. Throws <see cref="SecretUnprotectException"/> when it cannot be decrypted (never returns "" silently).</summary>
     string Unprotect(string stored);
+}
+
+/// <summary>A stored secret could not be decrypted (e.g. DPAPI data protected by another Windows user or machine).</summary>
+public sealed class SecretUnprotectException : Exception
+{
+    public SecretUnprotectException()
+    {
+    }
+
+    public SecretUnprotectException(string message) : base(message)
+    {
+    }
+
+    public SecretUnprotectException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
 }
 
 /// <summary>Linux/tests protector: "plain:&lt;text&gt;". Windows uses DPAPI in the App.</summary>

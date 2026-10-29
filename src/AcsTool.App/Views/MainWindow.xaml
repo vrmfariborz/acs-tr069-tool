@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:v="clr-namespace:AcsTool.App.Views"
-        Title="{Binding Title}" Width="1280" Height="820" MinWidth="1100" MinHeight="700">
+        Title="{Binding Title}" Width="1280" Height="820" MinWidth="640" MinHeight="480" ResizeMode="CanResize" WindowStartupLocation="CenterScreen">
   <Window.InputBindings>
     <KeyBinding Key="F5" Command="{Binding Proxy.StartStopCommand}" />
     <KeyBinding Key="L" Modifiers="Control" Command="{Binding Proxy.Feed.ClearCommand}" />
@@ -30,11 +30,21 @@
       </ItemsControl.ItemTemplate>
     </ItemsControl>
     <TabControl SelectedIndex="{Binding SelectedTabIndex}" Margin="4">
+      <!-- Each tab scrolls when the window is smaller than the tab's minimum size; otherwise the view fills the viewport
+           (Width/Height bound to the viewport keep star rows and DataGrid virtualization working). -->
       <TabItem Header="Proxy">
-        <v:ProxyView DataContext="{Binding Proxy}" />
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+          <v:ProxyView DataContext="{Binding Proxy}" MinWidth="760" MinHeight="420"
+                       Width="{Binding ViewportWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}}"
+                       Height="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}" />
+        </ScrollViewer>
       </TabItem>
       <TabItem Header="Simulator">
-        <v:SimulatorView DataContext="{Binding Simulator}" />
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+          <v:SimulatorView DataContext="{Binding Simulator}" MinWidth="900" MinHeight="560"
+                           Width="{Binding ViewportWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}}"
+                           Height="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}" />
+        </ScrollViewer>
       </TabItem>
     </TabControl>
   </DockPanel>

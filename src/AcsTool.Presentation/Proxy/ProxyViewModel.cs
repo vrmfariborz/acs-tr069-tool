@@ -76,6 +76,26 @@ public sealed partial class ProxyViewModel : ObservableValidator, IAsyncDisposab
         _tlsMode = (p.Tls ?? TlsOptions.Default).Mode;
         _cookieMode = p.CookieMode;
         ValidateAllProperties();
+        // Settings may be loaded (or edited in the Settings window) after this VM was created: follow them while the proxy is stopped.
+        settings.Changed += (_, _) => _ = _dispatcher.InvokeAsync(() =>
+        {
+            if (CanEdit && _server is null)
+            {
+                LoadFrom(_settings.Current.Proxy);
+            }
+        });
+    }
+
+    /// <summary>Copies persisted proxy settings into the editable fields (only meaningful while stopped).</summary>
+    public void LoadFrom(ProxySettings p)
+    {
+        ArgumentNullException.ThrowIfNull(p);
+        BindAddress = p.BindAddress;
+        Port = p.Port;
+        UpstreamUrl = p.UpstreamUrl;
+        TlsMode = (p.Tls ?? TlsOptions.Default).Mode;
+        CookieMode = p.CookieMode;
+        ValidateAllProperties();
     }
 
     public SessionFeedViewModel Feed { get; }
@@ -105,9 +125,9 @@ public sealed partial class ProxyViewModel : ObservableValidator, IAsyncDisposab
     public int ActiveSessions => _server?.Tracker.ActiveCount ?? 0;
 
     public static ValidationResult? ValidateUpstreamUrl(string? value, ValidationContext context) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps) && u.Host.Length > 0
-            ? ValidationResult.Success
-            : new ValidationResult("Upstream must be an absolute http:// or https:// URL");
+        !(Uri.TryCreate(value, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps) && u.Host.Length > 0)
+            ? new ValidationResult("Upstream must be an absolute http:// or https:// URL")
+            : u.UserInfo.Length > 0 ? new ValidationResult(UrlUtil.UserInfoRejectedMessage) : ValidationResult.Success;
 
     public static ValidationResult? ValidateBindAddress(string? value, ValidationContext context) =>
         IPAddress.TryParse(value, out _) || string.Equals(value, "localhost", StringComparison.OrdinalIgnoreCase)
@@ -175,6 +195,19 @@ public sealed partial class ProxyViewModel : ObservableValidator, IAsyncDisposab
             await server.DisposeAsync();
             _banners.Show(BannerKind.Error, ex.Message, BindBannerKey);
             State = ProxyState.Faulted;
+            LoadFrom(_settings.Current.Proxy); // re-sync with persisted settings (review R-M1)
+            return false;
+        }
+#pragma warning disable CA1031 // any start failure must leave the tab usable (Faulted + banner), never stuck in Starting (review m11)
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _log.LogError(1102, ex, "Proxy failed to start on {Address}:{Port}", proxy.BindAddress, proxy.Port);
+            server.StateChanged -= OnServerStateChanged;
+            await server.DisposeAsync();
+            _banners.Show(BannerKind.Error, "Proxy failed to start: " + ex.Message, BindBannerKey);
+            State = ProxyState.Faulted;
+            LoadFrom(_settings.Current.Proxy); // re-sync with persisted settings (review R-M1)
             return false;
         }
     }
@@ -192,6 +225,9 @@ public sealed partial class ProxyViewModel : ObservableValidator, IAsyncDisposab
         await server.DisposeAsync();
         BoundUrls.Clear();
         State = ProxyState.Stopped;
+        // Settings saved in the Settings window while running ("apply on the next Start") must not be overwritten by the
+        // tab's stale values on the next Start; the tab was read-only while running, so no user edits are lost (review R-M1).
+        LoadFrom(_settings.Current.Proxy);
     }
 
     private void OnServerStateChanged(object? sender, ProxyState s)

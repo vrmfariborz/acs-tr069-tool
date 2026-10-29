@@ -91,6 +91,22 @@ public class TrackerTests
     }
 
     [Fact]
+    public void Resolve_NewInformDuringCompletionGrace_EndsOldAsCompletedNotSuperseded()
+    {
+        var s1 = Resolve(InformA, "c1");
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s1, CwmpMessageKind.Inform, Resp(200, [1]), CwmpMessageKind.InformResponse, []));
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s1, CwmpMessageKind.Empty, Resp(200, [1]), CwmpMessageKind.GetParameterValues, []));
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s1, CwmpMessageKind.GetParameterValuesResponse, Resp(204), null, []));
+        Assert.True(s1.AwaitingFinalEmpty);
+        _time.Advance(TimeSpan.FromMilliseconds(500)); // inside the 2 s grace window
+        var s2 = Resolve(InformA, "c2");
+        Assert.NotSame(s1, s2);
+        Assert.Equal(SessionOutcome.Completed, _store.Get(s1.SessionId)!.Outcome);
+        Assert.Null(_store.Get(s2.SessionId)!.Ended);
+        Assert.Equal(1, _tracker.ActiveCount);
+    }
+
+    [Fact]
     public void Resolve_InformAfter401_ReusesSession()
     {
         var s1 = Resolve(InformA, "c1");
@@ -144,6 +160,35 @@ public class TrackerTests
         Assert.Equal(expected, CpeSessionTracker.EvaluateEnd(s, requestKind, Resp(status, new byte[bodyLen]), null, notes));
     }
 
+    [Theory]
+    [InlineData(200)]
+    [InlineData(500)]
+    public void EvaluateEnd_AcsFaultToInform_EndsAcsFaultImmediately(int status)
+    {
+        // BUG-01: whatever the HTTP status, a SOAP Fault answering the Inform ends the session now.
+        var s = Resolve(InformA, "c1");
+        var notes = new List<string>();
+        Assert.Equal(SessionOutcome.AcsFault, CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Inform, Resp(status, new byte[10]), CwmpMessageKind.Fault, notes));
+        Assert.Contains("ACS answered the Inform with a SOAP Fault", notes);
+        // A fault to a later CPE response does not end the session by itself (the ACS may continue).
+        var s2 = Resolve(InformB, "c2");
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s2, CwmpMessageKind.GetParameterValuesResponse, Resp(200, new byte[10]), CwmpMessageKind.Fault, notes));
+    }
+
+    [Theory]
+    [InlineData(401)]
+    [InlineData(407)]
+    public void EvaluateEnd_AuthChallengeWithFaultBody_NotAcsFault(int status)
+    {
+        // R2-n1: a challenge whose body is a SOAP Fault still goes through the auth retry.
+        var s = Resolve(InformA, "c1");
+        var notes = new List<string>();
+        var outcome = CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Inform, Resp(status, new byte[10]), CwmpMessageKind.Fault, notes);
+        // 401: first challenge -> no outcome yet (the CPE retries with credentials); 407: existing HTTP-error handling.
+        Assert.Equal(status == 401 ? null : SessionOutcome.HttpError, outcome);
+        Assert.Equal(status == 401, notes.Contains("AuthChallenge"));
+    }
+
     [Fact]
     public void EvaluateEnd_TwoConsecutive401_AuthFailed()
     {
@@ -175,6 +220,28 @@ public class TrackerTests
         Assert.True(s.AwaitingFinalEmpty);
         Assert.Empty(notes);
         Assert.Equal(SessionOutcome.Completed, CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Empty, Resp(204), null, []));
+    }
+
+    private sealed class EndThrowsSink(ISessionSink inner) : ISessionSink
+    {
+        public Guid StartSession(SessionStart start) => inner.StartSession(start);
+        public int AddExchange(Guid sessionId, HttpMessageCapture request, MessageSummary summary, DateTimeOffset started) => inner.AddExchange(sessionId, request, summary, started);
+        public void CompleteExchange(Guid sessionId, int seq, HttpMessageCapture? response, MessageSummary? summary, UpstreamError? error,
+            ExchangeTimings timings, IReadOnlyList<string>? notes = null) => inner.CompleteExchange(sessionId, seq, response, summary, error, timings, notes);
+        public void UpdateSession(Guid sessionId, Func<SessionSnapshot, SessionSnapshot> patch) => inner.UpdateSession(sessionId, patch);
+        public void EndSession(Guid sessionId, SessionOutcome outcome) => throw new InvalidOperationException("sink exploded");
+    }
+
+    [Fact]
+    public void Sweep_SinkThrows_DoesNotEscapeTimerCallback()
+    {
+        var tracker = new CpeSessionTracker(new ProxySettings(), new UpstreamHandlerFactory(), new EndThrowsSink(_store), _time, NullLogger<CpeSessionTracker>.Instance);
+        tracker.StartSweeper();
+        var req = new IncomingRequest("POST", "/acs", [], InformA, "192.168.1.50", 50000, "c1", false);
+        var parsed = _parser.Parse(InformA);
+        tracker.Resolve(req, parsed, _summ.Summarize(parsed));
+        _time.Advance(TimeSpan.FromSeconds(31)); // idle → sweep → EndSession throws inside the timer callback
+        tracker.Sweep();
     }
 
     [Fact]
@@ -213,6 +280,19 @@ public class UriAndHeaderTests
     public void BuildUpstreamUri_Combines(string upstream, PathMode mode, string? fixedPath, string target, string expected)
     {
         Assert.Equal(expected, UpstreamForwarder.BuildUpstreamUri(upstream, mode, fixedPath, target).OriginalString);
+    }
+
+    [Fact]
+    public void RewriteSetCookie_PathNotMatchedByCpePath_RewrittenToRoot()
+    {
+        var r = new HeaderRewriter(new ProxySettings());
+        var notes = new List<string>();
+        Assert.Equal("sid=1; Path=/; HttpOnly", r.RewriteSetCookie("sid=1; Path=/tr069; HttpOnly", false, false, notes, "/acs"));
+        Assert.Contains("Set-Cookie Path /tr069 rewritten to / (CPE posts to /acs)", notes);
+        Assert.Equal("sid=1; Path=/acs", r.RewriteSetCookie("sid=1; Path=/acs", false, false, [], "/acs/x?y=1"));
+        Assert.Equal("sid=1; Path=/", r.RewriteSetCookie("sid=1; Path=/", false, false, [], "/acs"));
+        Assert.Equal("sid=1; Path=/ac", r.RewriteSetCookie("sid=1; Path=/ac", false, false, [], "/ac")); // exact match kept
+        Assert.Equal("sid=1; Path=/", r.RewriteSetCookie("sid=1; Path=/ac", false, false, [], "/acs")); // /ac does not path-match /acs
     }
 
     [Fact]

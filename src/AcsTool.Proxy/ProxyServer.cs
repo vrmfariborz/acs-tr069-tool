@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using AcsTool.Core.Net;
 using AcsTool.Core.Sessions;
 using AcsTool.Core.Settings;
 using Microsoft.AspNetCore.Builder;
@@ -57,33 +58,51 @@ public sealed class ProxyServer : IAsyncDisposable
                 return;
             }
             SetState(ProxyState.Starting);
-            if (!IPAddress.TryParse(_settings.BindAddress.Trim('[', ']'), out var ip))
+            var bind = _settings.BindAddress.Trim();
+            IPAddress? ip = string.Equals(bind, "localhost", StringComparison.OrdinalIgnoreCase) ? IPAddress.Loopback : null; // review m11
+            if (ip is null && !IPAddress.TryParse(bind.Trim('[', ']'), out ip))
             {
                 SetState(ProxyState.Faulted);
                 throw new ProxyBindException(ProxyBindFailure.AddressNotAvailable, _settings.BindAddress, _settings.Port, null);
             }
             _stopping = new CancellationTokenSource();
-            var app = Build(ip);
+            WebApplication? app = null;
             try
             {
+                _tracker.PrepareTls();
+                app = Build(ip);
                 await app.StartAsync(ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is IOException or SocketException or AddressInUseException or InvalidOperationException or UnauthorizedAccessException)
+            catch (Exception ex)
             {
-                await app.DisposeAsync().ConfigureAwait(false);
+                // Clean up on any failure (review m11): no leaked app/CTS, state Faulted, then classify.
+                if (app is not null)
+                {
+                    await app.DisposeAsync().ConfigureAwait(false);
+                }
                 _stopping.Dispose();
                 _stopping = null;
+                _tracker.ReleaseTls();
                 SetState(ProxyState.Faulted);
-                var reason = MapBindFailure(ex);
-                _log.LogWarning(1010, ex, "Proxy bind failed on {Address}:{Port}: {Reason}", _settings.BindAddress, _settings.Port, reason);
-                throw new ProxyBindException(reason, _settings.BindAddress, _settings.Port, ex);
+                if (ex is IOException or SocketException or AddressInUseException or InvalidOperationException or UnauthorizedAccessException)
+                {
+                    var reason = MapBindFailure(ex);
+                    _log.LogWarning(1010, ex, "Proxy bind failed on {Address}:{Port}: {Reason}", _settings.BindAddress, _settings.Port, reason);
+                    throw new ProxyBindException(reason, _settings.BindAddress, _settings.Port, ex);
+                }
+                _log.LogError(1014, ex, "Proxy failed to start on {Address}:{Port}", _settings.BindAddress, _settings.Port);
+                throw;
             }
             _app = app;
             BoundUrls = [.. app.Urls];
             BoundPort = BoundUrls.Select(u => Uri.TryCreate(u.Replace("0.0.0.0", "127.0.0.1", StringComparison.Ordinal).Replace("[::]", "[::1]", StringComparison.Ordinal), UriKind.Absolute, out var x) ? x.Port : 0)
                 .FirstOrDefault(p => p > 0);
             _tracker.StartSweeper();
-            _log.LogInformation(1011, "Proxy listening on {Urls} → {Upstream}", string.Join(", ", BoundUrls), _settings.UpstreamUrl);
+            _log.LogInformation(1011, "Proxy listening on {Urls} → {Upstream}", string.Join(", ", BoundUrls), UrlUtil.RedactUserInfo(_settings.UpstreamUrl));
+            if (UrlUtil.HasUserInfo(_settings.UpstreamUrl))
+            {
+                _log.LogWarning(1013, "Credentials in the upstream URL are ignored (not forwarded); the CPE's Authorization header is relayed");
+            }
             SetState(ProxyState.Running);
         }
         finally
@@ -125,6 +144,7 @@ public sealed class ProxyServer : IAsyncDisposable
             _stopping = null;
             _tracker.StopSweeper();
             await _tracker.EndAllAsync(SessionOutcome.Canceled).ConfigureAwait(false);
+            _tracker.ReleaseTls();
             BoundUrls = [];
             SetState(ProxyState.Stopped);
         }

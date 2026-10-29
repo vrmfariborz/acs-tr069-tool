@@ -5,15 +5,14 @@
              xmlns:sim="clr-namespace:AcsTool.Presentation.Simulator;assembly=AcsTool.Presentation">
   <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="3*" MinHeight="200" />
+      <RowDefinition Height="3*" MinHeight="240" />
       <RowDefinition Height="5" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="2*" MinHeight="120" />
+      <RowDefinition Height="2*" MinHeight="300" />
     </Grid.RowDefinitions>
     <Grid>
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="220" />
-        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="1*" MinWidth="170" MaxWidth="320" />
+        <ColumnDefinition Width="4*" MinWidth="560" />
       </Grid.ColumnDefinitions>
       <DockPanel Margin="4">
         <TextBlock DockPanel.Dock="Top" Text="Profiles" FontWeight="SemiBold" />
@@ -23,152 +22,164 @@
         </StackPanel>
         <ListBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="DisplayName" />
       </DockPanel>
-      <DockPanel Grid.Column="1" DataContext="{Binding SelectedProfile}"
-                 Visibility="{Binding Converter={StaticResource NullToVisibility}}">
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4">
-          <Label Content="Profile" />
-          <TextBox Width="220" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
-          <Button Content="Save" Command="{Binding DataContext.SaveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-          <Button Content="Delete" Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-          <Button Content="▶ Start CPE" Command="{Binding DataContext.StartCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-          <Button Content="⏹ Stop" Command="{Binding DataContext.StopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-          <Button Content="✉ Send Inform now" FontWeight="SemiBold" Command="{Binding DataContext.SendInformNowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-          <Button Content="■ Stop all" Command="{Binding DataContext.StopAllCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-        </StackPanel>
-        <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Errors}" Margin="8,0">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate>
-              <TextBlock Text="{Binding}" Foreground="{StaticResource ErrorBrush}" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <WrapPanel DockPanel.Dock="Top">
-          <GroupBox Header="Device">
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="150" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="150" />
-              </Grid.ColumnDefinitions>
-              <Grid.RowDefinitions>
-                <RowDefinition />
-                <RowDefinition />
-              </Grid.RowDefinitions>
-              <Label Content="Manufacturer" />
-              <TextBox Grid.Column="1" Text="{Binding Manufacturer, UpdateSourceTrigger=PropertyChanged}" />
-              <Label Grid.Column="2" Content="OUI" />
-              <TextBox Grid.Column="3" Text="{Binding Oui, UpdateSourceTrigger=PropertyChanged}" CharacterCasing="Upper" MaxLength="6" />
-              <Label Grid.Row="1" Content="ProductClass" />
-              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ProductClass, UpdateSourceTrigger=PropertyChanged}" />
-              <Label Grid.Row="1" Grid.Column="2" Content="Serial" />
-              <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding SerialNumber, UpdateSourceTrigger=PropertyChanged}" />
-            </Grid>
-          </GroupBox>
-          <GroupBox Header="ACS">
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="140" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="140" />
-              </Grid.ColumnDefinitions>
-              <Grid.RowDefinitions>
-                <RowDefinition />
-                <RowDefinition />
-                <RowDefinition />
-              </Grid.RowDefinitions>
-              <Label Content="URL" />
-              <TextBox Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding AcsUrl, UpdateSourceTrigger=PropertyChanged}" />
-              <Label Grid.Row="1" Content="User" />
-              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
-              <Label Grid.Row="1" Grid.Column="2" Content="Password" />
-              <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}" ToolTip="Stored with DPAPI (current Windows user)" />
-              <Label Grid.Row="2" Content="cwmp" />
-              <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{x:Static sim:CpeProfileEditorViewModel.Versions}" SelectedItem="{Binding Version}" />
-              <Label Grid.Row="2" Grid.Column="2" Content="Timeout (s)" />
-              <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding RequestTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
-            </Grid>
-          </GroupBox>
-        </WrapPanel>
-        <GroupBox DockPanel.Dock="Top" Header="Events">
-          <DockPanel>
-            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal">
-              <Label Content="Custom" />
-              <TextBox Width="220" Text="{Binding CustomEvent, UpdateSourceTrigger=PropertyChanged}" />
-              <Button Content="+" Command="{Binding AddCustomEventCommand}" MinWidth="30" />
-            </StackPanel>
-            <ItemsControl ItemsSource="{Binding Events}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <WrapPanel />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <StackPanel Orientation="Horizontal" Margin="4,1">
-                    <CheckBox Content="{Binding Code}" IsChecked="{Binding IsSelected}" VerticalAlignment="Center" />
-                    <TextBox Width="60" Text="{Binding CommandKey, UpdateSourceTrigger=PropertyChanged}" ToolTip="CommandKey"
-                             Visibility="{Binding IsMethodEvent, Converter={StaticResource BoolToVisibility}}" />
-                  </StackPanel>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </DockPanel>
-        </GroupBox>
-        <GroupBox Header="Parameters">
-          <DockPanel>
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
-              <Button Content="+ Add" Command="{Binding AddParameterCommand}" />
-              <Button Content="Reset to defaults" Command="{Binding ResetParametersCommand}" />
-            </StackPanel>
-            <DataGrid ItemsSource="{Binding Parameters}" IsReadOnly="False" CanUserDeleteRows="False">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="Name" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="3*" />
-                <DataGridComboBoxColumn Header="Type" ItemsSource="{x:Static sim:ParameterRowViewModel.Types}" SelectedItemBinding="{Binding Type}" Width="110" />
-                <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Width="2*" />
-                <DataGridCheckBoxColumn Header="W" Binding="{Binding Writable, UpdateSourceTrigger=PropertyChanged}" Width="30" />
-                <DataGridCheckBoxColumn Header="Inf" Binding="{Binding IncludeInInform, UpdateSourceTrigger=PropertyChanged}" Width="35" />
-                <DataGridTextColumn Header="N" Binding="{Binding Notification, UpdateSourceTrigger=PropertyChanged}" Width="30" />
-                <DataGridTextColumn Header="🔒" Binding="{Binding IsForced}" IsReadOnly="True" Width="45" />
-              </DataGrid.Columns>
-            </DataGrid>
-          </DockPanel>
-        </GroupBox>
-      </DockPanel>
-    </Grid>
-    <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" />
-    <DockPanel Grid.Row="2" Margin="4,2">
-      <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold">
-        <Run Text="Running CPEs  " /><Run Text="{Binding Summary, Mode=OneWay}" FontWeight="Normal" Foreground="{StaticResource MutedBrush}" />
-      </TextBlock>
-      <DataGrid ItemsSource="{Binding RunningCpes}" SelectedItem="{Binding SelectedCpe}" IsReadOnly="True" MaxHeight="140">
-        <DataGrid.Columns>
-          <DataGridTextColumn Header="Device" Binding="{Binding DeviceKey}" Width="170" />
-          <DataGridTextColumn Header="State" Binding="{Binding State}" Width="100" />
-          <DataGridTextColumn Header="Retry" Binding="{Binding RetryCount}" Width="50" />
-          <DataGridTextColumn Header="Last outcome" Binding="{Binding LastOutcome}" Width="130" />
-          <DataGridTextColumn Header="Sessions" Binding="{Binding Sessions}" Width="70" />
-          <DataGridTextColumn Header="Last error" Binding="{Binding LastError}" Width="*" />
-          <DataGridTemplateColumn Width="80">
-            <DataGridTemplateColumn.CellTemplate>
+      <!-- The profile editor scrolls on its own when its row is shorter than the editor (parameters grid keeps >= 140 px). -->
+      <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                    DataContext="{Binding SelectedProfile}" Visibility="{Binding Converter={StaticResource NullToVisibility}}">
+        <DockPanel MinHeight="360" Height="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
+          <WrapPanel DockPanel.Dock="Top" Margin="4">
+            <Label Content="Profile" />
+            <TextBox MinWidth="220" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Content="Save" Command="{Binding DataContext.SaveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+            <Button Content="Delete" Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+            <Button Content="▶ Start CPE" Command="{Binding DataContext.StartCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+            <Button Content="⏹ Stop" Command="{Binding DataContext.StopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+            <Button Content="✉ Send Inform now" FontWeight="SemiBold" Command="{Binding DataContext.SendInformNowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+            <Button Content="■ Stop all" Command="{Binding DataContext.StopAllCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+          </WrapPanel>
+          <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Errors}" Margin="8,0">
+            <ItemsControl.ItemTemplate>
               <DataTemplate>
-                <Button Content="Inform" Command="{Binding SendInformCommand}" Padding="4,0" />
+                <TextBlock Text="{Binding}" Foreground="{StaticResource ErrorBrush}" />
               </DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-        </DataGrid.Columns>
-      </DataGrid>
-    </DockPanel>
-    <Grid Grid.Row="3">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="5*" />
-        <ColumnDefinition Width="5" />
-        <ColumnDefinition Width="6*" />
-      </Grid.ColumnDefinitions>
-      <v:SessionFeedView DataContext="{Binding Feed}" />
-      <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
-      <v:SessionDetailView Grid.Column="2" DataContext="{Binding Feed.Detail}" />
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <WrapPanel DockPanel.Dock="Top">
+            <GroupBox Header="Device">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" MinWidth="140" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" MinWidth="140" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition />
+                  <RowDefinition />
+                </Grid.RowDefinitions>
+                <Label Content="Manufacturer" />
+                <TextBox Grid.Column="1" Text="{Binding Manufacturer, UpdateSourceTrigger=PropertyChanged}" />
+                <Label Grid.Column="2" Content="OUI" />
+                <TextBox Grid.Column="3" Text="{Binding Oui, UpdateSourceTrigger=PropertyChanged}" CharacterCasing="Upper" MaxLength="6" />
+                <Label Grid.Row="1" Content="ProductClass" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ProductClass, UpdateSourceTrigger=PropertyChanged}" />
+                <Label Grid.Row="1" Grid.Column="2" Content="Serial" />
+                <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding SerialNumber, UpdateSourceTrigger=PropertyChanged}" />
+              </Grid>
+            </GroupBox>
+            <GroupBox Header="ACS">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" MinWidth="140" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" MinWidth="140" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition />
+                  <RowDefinition />
+                  <RowDefinition />
+                </Grid.RowDefinitions>
+                <Label Content="URL" />
+                <TextBox Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding AcsUrl, UpdateSourceTrigger=PropertyChanged}" />
+                <Label Grid.Row="1" Content="User" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
+                <Label Grid.Row="1" Grid.Column="2" Content="Password" />
+                <StackPanel Grid.Row="1" Grid.Column="3">
+                  <PasswordBox v:PasswordBoxAssistant.Attach="True"
+                               v:PasswordBoxAssistant.BoundPassword="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                               ToolTip="Stored with DPAPI (current Windows user)" />
+                  <TextBlock Foreground="DarkRed" TextWrapping="Wrap" Text="Stored password could not be decrypted for this Windows user; re-enter it."
+                             Visibility="{Binding PasswordUnreadable, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+                <Label Grid.Row="2" Content="cwmp" />
+                <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{x:Static sim:CpeProfileEditorViewModel.Versions}" SelectedItem="{Binding Version}" />
+                <Label Grid.Row="2" Grid.Column="2" Content="Timeout (s)" />
+                <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding RequestTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
+              </Grid>
+            </GroupBox>
+          </WrapPanel>
+          <GroupBox DockPanel.Dock="Top" Header="Events">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal">
+                <Label Content="Custom" />
+                <TextBox MinWidth="220" Text="{Binding CustomEvent, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Content="+" Command="{Binding AddCustomEventCommand}" MinWidth="30" />
+              </StackPanel>
+              <ItemsControl ItemsSource="{Binding Events}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <StackPanel Orientation="Horizontal" Margin="4,1">
+                      <CheckBox Content="{Binding Code}" IsChecked="{Binding IsSelected}" VerticalAlignment="Center" />
+                      <TextBox Width="60" Text="{Binding CommandKey, UpdateSourceTrigger=PropertyChanged}" ToolTip="CommandKey"
+                               Visibility="{Binding IsMethodEvent, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </DockPanel>
+          </GroupBox>
+          <GroupBox Header="Parameters">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                <Button Content="+ Add" Command="{Binding AddParameterCommand}" />
+                <Button Content="Reset to defaults" Command="{Binding ResetParametersCommand}" />
+              </StackPanel>
+              <DataGrid ItemsSource="{Binding Parameters}" IsReadOnly="False" CanUserDeleteRows="False" MinHeight="140">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Name" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="3*" />
+                  <DataGridComboBoxColumn Header="Type" ItemsSource="{x:Static sim:ParameterRowViewModel.Types}" SelectedItemBinding="{Binding Type}" Width="110" />
+                  <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Width="2*" />
+                  <DataGridCheckBoxColumn Header="W" Binding="{Binding Writable, UpdateSourceTrigger=PropertyChanged}" Width="30" />
+                  <DataGridCheckBoxColumn Header="Inf" Binding="{Binding IncludeInInform, UpdateSourceTrigger=PropertyChanged}" Width="35" />
+                  <DataGridTextColumn Header="N" Binding="{Binding Notification, UpdateSourceTrigger=PropertyChanged}" Width="30" />
+                  <DataGridTextColumn Header="🔒" Binding="{Binding IsForced}" IsReadOnly="True" Width="45" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </DockPanel>
+          </GroupBox>
+        </DockPanel>
+      </ScrollViewer>
     </Grid>
+    <!-- Splits the profile editor (row 0) from the lower pane (row 2: running CPEs + feed/detail); review NEW-02. -->
+    <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext" />
+    <DockPanel Grid.Row="2">
+      <DockPanel DockPanel.Dock="Top" Margin="4,2">
+        <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold">
+          <Run Text="Running CPEs  " /><Run Text="{Binding Summary, Mode=OneWay}" FontWeight="Normal" Foreground="{StaticResource MutedBrush}" />
+        </TextBlock>
+        <DataGrid ItemsSource="{Binding RunningCpes}" SelectedItem="{Binding SelectedCpe}" IsReadOnly="True" MaxHeight="140">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Device" Binding="{Binding DeviceKey}" Width="170" />
+            <DataGridTextColumn Header="State" Binding="{Binding State}" Width="100" />
+            <DataGridTextColumn Header="Retry" Binding="{Binding RetryCount}" Width="50" />
+            <DataGridTextColumn Header="Last outcome" Binding="{Binding LastOutcome}" Width="130" />
+            <DataGridTextColumn Header="Sessions" Binding="{Binding Sessions}" Width="70" />
+            <DataGridTextColumn Header="Last error" Binding="{Binding LastError}" Width="*" />
+            <DataGridTemplateColumn Width="80">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <Button Content="Inform" Command="{Binding SendInformCommand}" Padding="4,0" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+      </DockPanel>
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="5*" />
+          <ColumnDefinition Width="5" />
+          <ColumnDefinition Width="6*" />
+        </Grid.ColumnDefinitions>
+        <v:SessionFeedView DataContext="{Binding Feed}" />
+        <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
+        <v:SessionDetailView Grid.Column="2" DataContext="{Binding Feed.Detail}" />
+      </Grid>
+    </DockPanel>
   </Grid>
 </UserControl>

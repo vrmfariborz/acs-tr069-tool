@@ -30,6 +30,7 @@ public sealed class CpeSessionTracker : IAsyncDisposable
     private readonly Dictionary<string, List<ProxySession>> _byIp = new(StringComparer.Ordinal);
     private readonly List<ProxySession> _active = [];
     private ITimer? _sweeper;
+    private System.Security.Cryptography.X509Certificates.X509Certificate2? _customCa;
 
     public CpeSessionTracker(ProxySettings settings, IUpstreamHandlerFactory handlers, ISessionSink sink, TimeProvider time, ILogger<CpeSessionTracker> log)
     {
@@ -46,6 +47,43 @@ public sealed class CpeSessionTracker : IAsyncDisposable
     }
 
     public TimeSpan IdleTimeout => TimeSpan.FromSeconds(Math.Max(1, _settings.SessionIdleTimeoutSeconds));
+
+    /// <summary>Loads TLS material once per proxy start (custom CA); fails the start with a clear message (review m12).</summary>
+    public void PrepareTls()
+    {
+        var tls = _settings.Tls ?? TlsOptions.Default;
+        if (tls.Mode != TlsValidationMode.CustomCa)
+        {
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(tls.CustomCaPath))
+        {
+            throw new ProxyStartException("TLS mode CustomCa needs a CA certificate file (Settings → TLS).");
+        }
+        try
+        {
+            var ca = TlsValidatorFactory.LoadCertificate(tls.CustomCaPath);
+            lock (_lock)
+            {
+                _customCa?.Dispose();
+                _customCa = ca;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+        {
+            throw new ProxyStartException($"Custom CA file '{tls.CustomCaPath}' could not be loaded: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>Disposes TLS material loaded by <see cref="PrepareTls"/> (call after all sessions ended).</summary>
+    public void ReleaseTls()
+    {
+        lock (_lock)
+        {
+            _customCa?.Dispose();
+            _customCa = null;
+        }
+    }
 
     public void StartSweeper()
     {
@@ -83,7 +121,8 @@ public sealed class CpeSessionTracker : IAsyncDisposable
                     {
                         foreach (var old in sameIp.Where(s => s.DeviceKey == key).ToList())
                         {
-                            EndLocked(old, SessionOutcome.Superseded);
+                            // A session waiting only for an optional trailing empty POST has already completed (M3).
+                            EndLocked(old, old.AwaitingFinalEmpty ? FinalOutcome(old) : SessionOutcome.Superseded);
                         }
                     }
                     session = CreateLocked(req, summary.DeviceId, summary.Events ?? [], summary.Version, label: null, orphan: false, oneShot: false);
@@ -164,14 +203,17 @@ public sealed class CpeSessionTracker : IAsyncDisposable
     private ProxySession CreateLocked(IncomingRequest req, DeviceIdStruct? deviceId, IReadOnlyList<EventStruct> events,
         CwmpVersion version, string? label, bool orphan, bool oneShot)
     {
-        var id = _sink.StartSession(new SessionStart(SessionSource.Proxy, req.ClientEndpoint, _settings.UpstreamUrl, deviceId, events, version, label));
+        var id = _sink.StartSession(new SessionStart(SessionSource.Proxy, req.ClientEndpoint, UrlUtil.RedactUserInfo(_settings.UpstreamUrl), deviceId, events, version, label));
         var tracker = new PhaseTracker();
         var managed = _settings.CookieMode == CookieMode.ManagedPerCpe;
         var cookies = managed ? new CookieContainer() : null;
         ProxySession? session = null;
         var handler = _handlers.Create(
             new UpstreamHandlerOptions(TimeSpan.FromSeconds(Math.Max(1, _settings.ConnectTimeoutSeconds)), _settings.Tls ?? TlsOptions.Default,
-                UseCookies: managed, cookies, Credentials: null, AllowAutoRedirect: false, _settings.UseSystemProxy),
+                UseCookies: managed, cookies, Credentials: null, AllowAutoRedirect: false, _settings.UseSystemProxy)
+            {
+                PreloadedCustomCa = _customCa,
+            },
             () => tracker,
             tls =>
             {
@@ -237,7 +279,8 @@ public sealed class CpeSessionTracker : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(notes);
         if (result.IsFailure)
         {
-            return SessionOutcome.UpstreamError;
+            // Proxy stopped while the exchange was in flight → Canceled (§3.6.4), not an upstream problem (review m1).
+            return result.Error?.Kind == UpstreamErrorKind.Canceled ? SessionOutcome.Canceled : SessionOutcome.UpstreamError;
         }
         var status = result.StatusCode!.Value;
         session.AwaitingFinalEmpty = false;
@@ -256,6 +299,15 @@ public sealed class CpeSessionTracker : IAsyncDisposable
         if (responseKind == CwmpMessageKind.Fault)
         {
             session.SawAcsFault = true;
+            // 401/407 challenges keep their auth-retry handling even if the body happens to be a SOAP Fault (review R2-n1).
+            if (requestKind == CwmpMessageKind.Inform && status is not (401 or 407))
+            {
+                // TR-069 §3.7.1.4 / A.3.2.1: a CPE whose Inform is answered with a SOAP Fault ends the session and retries
+                // later; it sends nothing more, so waiting for the idle sweep would only mislabel it Abandoned (BUG-01).
+                // Checked before the HTTP status: SOAP 1.1 faults usually come with HTTP 500.
+                notes.Add("ACS answered the Inform with a SOAP Fault");
+                return SessionOutcome.AcsFault;
+            }
         }
         if (status == 401)
         {
@@ -360,6 +412,21 @@ public sealed class CpeSessionTracker : IAsyncDisposable
 
     internal void Sweep()
     {
+        // Timer callback: an exception here would crash the process (NFR-07; review m12).
+        try
+        {
+            SweepCore();
+        }
+#pragma warning disable CA1031
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _log.LogError(1003, ex, "Session sweep failed");
+        }
+    }
+
+    private void SweepCore()
+    {
         var now = _time.GetUtcNow();
         lock (_lock)
         {
@@ -385,5 +452,6 @@ public sealed class CpeSessionTracker : IAsyncDisposable
     {
         StopSweeper();
         await EndAllAsync(SessionOutcome.Canceled).ConfigureAwait(false);
+        ReleaseTls();
     }
 }

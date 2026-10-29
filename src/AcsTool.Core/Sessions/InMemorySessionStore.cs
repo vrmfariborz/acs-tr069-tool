@@ -18,7 +18,7 @@ public sealed class InMemorySessionStore : ISessionStore
     private readonly Dictionary<Guid, LinkedListNode<SessionSnapshot>> _byId = [];
     private readonly LinkedList<SessionSnapshot> _ordered = new();
     private readonly Channel<SessionChange> _channel;
-    private readonly CaptureSettings _settings;
+    private CaptureSettings _settings;
     private readonly TimeProvider _time;
     private long _capturedBytes;
     private int _active;
@@ -57,6 +57,60 @@ public sealed class InMemorySessionStore : ISessionStore
         }
     }
 
+    /// <summary>Current eviction limits (MaxSessions, CaptureBudgetBytes, ...).</summary>
+    public CaptureSettings Limits
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _settings;
+            }
+        }
+    }
+
+    /// <summary>Applies new capture limits at runtime (Settings window / settings load) and evicts down to them immediately.</summary>
+    public void UpdateLimits(CaptureSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        List<Guid> evicted;
+        lock (_gate)
+        {
+            _settings = settings;
+            evicted = EvictLocked();
+        }
+        NotifyRemoved(evicted);
+    }
+
+    /// <summary>
+    /// Budget estimate for one captured message (review M4): body bytes plus UTF-16 size of headers, summary fields and warnings.
+    /// Fixed-size parts (titles, timings) are ignored. Summaries are capped (MessageSummarizer.MaxListedItems), so this stays small.
+    /// </summary>
+    internal static long EstimateBytes(HttpMessageCapture? capture, MessageSummary? summary)
+    {
+        long n = 0;
+        if (capture is not null)
+        {
+            n += capture.Body.Length;
+            foreach (var h in capture.Headers)
+            {
+                n += 2L * (h.Key.Length + (h.Value?.Length ?? 0));
+            }
+        }
+        if (summary is not null)
+        {
+            foreach (var f in summary.Fields)
+            {
+                n += 2L * (f.Key.Length + (f.Value?.Length ?? 0));
+            }
+            foreach (var w in summary.Warnings)
+            {
+                n += 2L * w.Length;
+            }
+        }
+        return n;
+    }
+
     public bool TryConsumeResync() => Interlocked.Exchange(ref _resync, 0) == 1;
 
     public Guid StartSession(SessionStart start)
@@ -93,7 +147,7 @@ public sealed class InMemorySessionStore : ISessionStore
             var s = node.Value;
             seq = s.Exchanges.Count + 1;
             var ex = new ExchangeRecord(seq, request, summary, null, null, null, new ExchangeTimings(started), []);
-            var bytes = request.Body.Length;
+            var bytes = EstimateBytes(request, summary);
             node.Value = s with { Exchanges = s.Exchanges.Add(ex), CapturedBytes = s.CapturedBytes + bytes };
             _capturedBytes += bytes;
             evicted = EvictLocked();
@@ -120,7 +174,7 @@ public sealed class InMemorySessionStore : ISessionStore
                 return;
             }
             var old = s.Exchanges[idx];
-            var bytes = response?.Body.Length ?? 0;
+            var bytes = EstimateBytes(response, summary);
             var updated = old with
             {
                 Response = response,

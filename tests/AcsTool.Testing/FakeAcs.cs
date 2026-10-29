@@ -121,6 +121,9 @@ public sealed class FakeAcsScript
 
     public FakeAcsScript AbortConnection() => Add((_, _) => new FakeAcsResponse { Abort = true });
 
+    /// <summary>Responds with an arbitrary response (custom headers/body bytes).</summary>
+    public FakeAcsScript RespondWith(Func<FakeAcsSession, FakeAcsRequest, FakeAcsResponse> respond) => Add(respond);
+
     private FakeAcsScript Add(Func<FakeAcsSession, FakeAcsRequest, FakeAcsResponse> respond)
     {
         var (desc, pred) = _expect ?? ("any", _ => true);

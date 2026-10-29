@@ -11,6 +11,9 @@ public sealed record UpstreamHandlerOptions(TimeSpan ConnectTimeout, TlsOptions 
     public bool PreAuthenticate { get; init; }
 
     public int MaxAutomaticRedirections { get; init; } = 5;
+
+    /// <summary>Custom CA already loaded by the owner (not disposed by the handler).</summary>
+    public X509Certificate2? PreloadedCustomCa { get; init; }
 }
 
 public interface IUpstreamHandlerFactory
@@ -39,7 +42,7 @@ public sealed class UpstreamHandlerFactory : IUpstreamHandlerFactory
             Expect100ContinueTimeout = TimeSpan.Zero,
             SslOptions = new SslClientAuthenticationOptions
             {
-                RemoteCertificateValidationCallback = TlsValidatorFactory.Create(options.Tls, onTls, currentTracker),
+                RemoteCertificateValidationCallback = TlsValidatorFactory.Create(options.Tls, onTls, currentTracker, options.PreloadedCustomCa),
                 EnabledSslProtocols = options.Tls.Protocols,
                 // Strict keeps the platform default; Online is never used (R10: avoid hangs on isolated lab networks)
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,

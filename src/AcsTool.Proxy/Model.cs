@@ -22,6 +22,22 @@ public enum ProxyState { Stopped, Starting, Running, Stopping, Faulted }
 
 public enum ProxyBindFailure { PortInUse, AccessDenied, AddressNotAvailable, Other }
 
+/// <summary>The proxy configuration prevents a start (e.g. the custom CA file cannot be loaded). The message is user-facing.</summary>
+public sealed class ProxyStartException : Exception
+{
+    public ProxyStartException()
+    {
+    }
+
+    public ProxyStartException(string message) : base(message)
+    {
+    }
+
+    public ProxyStartException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
+}
+
 public sealed class ProxyBindException : Exception
 {
     public ProxyBindException()
