@@ -73,6 +73,63 @@ public class FeedPumpTests
         }
     }
 
+    private sealed class ThrowingConsumer : IFeedBatchConsumer
+    {
+        public int Calls;
+
+        public void Apply(FeedBatch batch)
+        {
+            Interlocked.Increment(ref Calls);
+            throw new InvalidOperationException("view exploded");
+        }
+    }
+
+    private sealed class RecordingConsumer : IFeedBatchConsumer
+    {
+        private readonly List<FeedBatch> _batches = [];
+
+        public List<FeedBatch> Batches
+        {
+            get
+            {
+                lock (_batches)
+                {
+                    return [.. _batches];
+                }
+            }
+        }
+
+        public void Apply(FeedBatch batch)
+        {
+            lock (_batches)
+            {
+                _batches.Add(batch);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Pump_ThrowingConsumer_OthersStillServed_BannerShown_NextBatchResyncs()
+    {
+        var store = Kit.Store();
+        var dispatcher = new SynchronousUiDispatcher();
+        var banners = new BannerService(dispatcher);
+        await using var pump = new SessionFeedPump(store, dispatcher, TimeProvider.System, NullLogger<SessionFeedPump>.Instance, banners);
+        var bad = new ThrowingConsumer();
+        var good = new RecordingConsumer();
+        pump.Subscribe(bad);
+        pump.Subscribe(good);
+        pump.Start();
+        Kit.StartSession(store, "A");
+        Assert.True(await TestUtil.WaitUntilAsync(() => good.Batches.Count >= 1 && pump.ErrorCount >= 1));
+        Assert.Contains(banners.Banners, b => b.Key == SessionFeedPump.ErrorBannerKey);
+        Kit.StartSession(store, "B");
+        Assert.True(await TestUtil.WaitUntilAsync(() => good.Batches.Count >= 2));
+        Assert.NotNull(good.Batches[1].Resync); // forced resync after the failure
+        Assert.Equal(2, good.Batches[1].Resync!.Count);
+        Assert.True(bad.Calls >= 2); // the pump kept running
+    }
+
     [Theory]
     [InlineData(SessionChangeKind.Updated, SessionChangeKind.Added, SessionChangeKind.Added)]
     [InlineData(SessionChangeKind.Ended, SessionChangeKind.Updated, SessionChangeKind.Ended)]

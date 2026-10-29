@@ -32,14 +32,23 @@ public sealed class SessionFeedPump : IAsyncDisposable
     private Task? _loop;
     private int _dispatches;
     private volatile bool _collecting;
+    private readonly IBannerService? _banners;
+    private int _forceResync;
+    private int _errors;
 
-    public SessionFeedPump(ISessionStore store, IUiDispatcher dispatcher, TimeProvider time, ILogger<SessionFeedPump> log)
+    public const string ErrorBannerKey = "feed-error";
+
+    public SessionFeedPump(ISessionStore store, IUiDispatcher dispatcher, TimeProvider time, ILogger<SessionFeedPump> log, IBannerService? banners = null)
     {
         _store = store;
         _dispatcher = dispatcher;
         _time = time;
         _log = log;
+        _banners = banners;
     }
+
+    /// <summary>Number of batch/consumer failures survived (review m6).</summary>
+    public int ErrorCount => Volatile.Read(ref _errors);
 
     public int DispatchCount => Volatile.Read(ref _dispatches);
 
@@ -90,36 +99,62 @@ public sealed class SessionFeedPump : IAsyncDisposable
         {
             while (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
             {
-                var pending = new Dictionary<Guid, SessionChangeKind>();
-                var cleared = false;
-                using var flushCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                var deadline = Task.Delay(FlushInterval, _time, flushCts.Token);
-                _collecting = true;
-                Drain(reader, pending, ref cleared);
-                while (pending.Count < MaxBatchIds && !deadline.IsCompleted)
+                try
                 {
-                    var more = reader.WaitToReadAsync(flushCts.Token).AsTask();
-                    var done = await Task.WhenAny(more, deadline).ConfigureAwait(false);
-                    if (done == deadline || !await more.ConfigureAwait(false))
-                    {
-                        break;
-                    }
-                    Drain(reader, pending, ref cleared);
+                    await CollectAndFlushAsync(reader, ct).ConfigureAwait(false);
                 }
-                await flushCts.CancelAsync().ConfigureAwait(false);
-                _collecting = false;
-                await FlushAsync(pending, cleared).ConfigureAwait(false);
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+#pragma warning disable CA1031 // one failed batch must not stop the feed for the rest of the process (review m6)
+                catch (Exception ex)
+#pragma warning restore CA1031
+                {
+                    _collecting = false;
+                    ReportFailure(ex);
+                    await Task.Delay(FlushInterval, _time, ct).ConfigureAwait(false);
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
-#pragma warning disable CA1031 // the pump must never die silently
-        catch (Exception ex)
-#pragma warning restore CA1031
+    }
+
+    private void ReportFailure(Exception ex)
+    {
+        Interlocked.Increment(ref _errors);
+        Interlocked.Exchange(ref _forceResync, 1); // the next batch carries the full store state
+        _log.LogError(3501, ex, "Session feed batch failed; resyncing");
+        if (_banners is { } banners)
         {
-            _log.LogError(3501, ex, "Session feed pump failed");
+            _ = _dispatcher.InvokeAsync(() => banners.Show(BannerKind.Warning,
+                "The session list hit an internal error and was resynchronized: " + ex.Message, ErrorBannerKey));
         }
+    }
+
+    private async Task CollectAndFlushAsync(System.Threading.Channels.ChannelReader<SessionChange> reader, CancellationToken ct)
+    {
+        var pending = new Dictionary<Guid, SessionChangeKind>();
+        var cleared = false;
+        using var flushCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var deadline = Task.Delay(FlushInterval, _time, flushCts.Token);
+        _collecting = true;
+        Drain(reader, pending, ref cleared);
+        while (pending.Count < MaxBatchIds && !deadline.IsCompleted)
+        {
+            var more = reader.WaitToReadAsync(flushCts.Token).AsTask();
+            var done = await Task.WhenAny(more, deadline).ConfigureAwait(false);
+            if (done == deadline || !await more.ConfigureAwait(false))
+            {
+                break;
+            }
+            Drain(reader, pending, ref cleared);
+        }
+        await flushCts.CancelAsync().ConfigureAwait(false);
+        _collecting = false;
+        await FlushAsync(pending, cleared).ConfigureAwait(false);
     }
 
     private static void Drain(System.Threading.Channels.ChannelReader<SessionChange> reader, Dictionary<Guid, SessionChangeKind> pending, ref bool cleared)
@@ -150,7 +185,8 @@ public sealed class SessionFeedPump : IAsyncDisposable
 
     private async Task FlushAsync(Dictionary<Guid, SessionChangeKind> pending, bool cleared)
     {
-        IReadOnlyList<SessionSnapshot>? resync = _store.TryConsumeResync() ? _store.GetAll() : null;
+        var forced = Interlocked.Exchange(ref _forceResync, 0) == 1;
+        IReadOnlyList<SessionSnapshot>? resync = _store.TryConsumeResync() | forced ? _store.GetAll() : null;
         var changes = pending.Select(p => new FeedChange(p.Key, p.Value, p.Value == SessionChangeKind.Removed ? null : _store.Get(p.Key))).ToList();
         var batch = new FeedBatch(changes, cleared, resync);
         IFeedBatchConsumer[] consumers;
@@ -162,7 +198,17 @@ public sealed class SessionFeedPump : IAsyncDisposable
         {
             foreach (var c in consumers)
             {
-                c.Apply(batch);
+                // Consumers are isolated: one throwing (e.g. a list view) does not starve the others.
+                try
+                {
+                    c.Apply(batch);
+                }
+#pragma warning disable CA1031
+                catch (Exception ex)
+#pragma warning restore CA1031
+                {
+                    ReportFailure(ex);
+                }
             }
         }).ConfigureAwait(false);
         Interlocked.Increment(ref _dispatches);
