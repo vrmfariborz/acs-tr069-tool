@@ -91,7 +91,11 @@ public static class TlsValidatorFactory
         return chain.Build(leaf);
     }
 
-    /// <summary>Loads a PEM or DER/PFX certificate file. Throws IOException/CryptographicException on failure.</summary>
+    /// <summary>
+    /// Loads a PEM, DER or (password-less) PFX/PKCS#12 certificate file. Throws IOException/CryptographicException on failure.
+    /// Uses <see cref="X509CertificateLoader"/> (net9+): the byte-array X509Certificate2 constructors are obsolete (SYSLIB0057)
+    /// and no longer sniff the format, so DER and PKCS#12 are tried explicitly.
+    /// </summary>
     public static X509Certificate2 LoadCertificate(string path)
     {
         var data = File.ReadAllBytes(path);
@@ -100,8 +104,25 @@ public static class TlsValidatorFactory
         {
             return X509Certificate2.CreateFromPem(text);
         }
-#pragma warning disable SYSLIB0057 // net8 API; X509CertificateLoader is net9+
-        return new X509Certificate2(data);
-#pragma warning restore SYSLIB0057
+        try
+        {
+            return X509CertificateLoader.LoadCertificate(data);
+        }
+        catch (CryptographicException)
+        {
+            // Not DER: a CA exported as PFX without a password (previously accepted by new X509Certificate2(byte[])).
+            var all = X509CertificateLoader.LoadPkcs12Collection(data, password: null);
+            if (all.Count == 0)
+            {
+                throw new CryptographicException("No certificate found in " + path);
+            }
+            // Prefer a CA certificate; dispose the others.
+            var pick = all.FirstOrDefault(c => c.Extensions.OfType<X509BasicConstraintsExtension>().Any(b => b.CertificateAuthority)) ?? all[0];
+            foreach (var other in all.Where(c => !ReferenceEquals(c, pick)))
+            {
+                other.Dispose();
+            }
+            return pick;
+        }
     }
 }

@@ -1,4 +1,5 @@
 name: ci
+# SDK comes from global.json (10.0.403+, rollForward latestFeature; net10.0 since the .NET 10 migration). No hardcoded versions here.
 on: [push, pull_request]
 jobs:
   linux:

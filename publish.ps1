@@ -1,4 +1,5 @@
-# Self-contained Windows x64 publish of the WPF app (NFR-13). Run on Windows.
+# Self-contained Windows x64 publish of the WPF app (NFR-13), net10.0-windows; bundles the .NET 10 runtime
+# (NETCore + WindowsDesktop + AspNetCore). Runs on Windows; also works from Linux/pwsh thanks to EnableWindowsTargeting.
 # Usage: ./publish.ps1 [-Output out/win-x64]
 param([string]$Output = 'out/win-x64')
 $ErrorActionPreference = 'Stop'

@@ -274,3 +274,78 @@ Changes from §7:
 
 Still open, but not blocking: BUG-01 (Medium; fix it before or at the start of M5), BUG-03 (Low), NEW-01 and NEW-02 (Low; UI, need confirmation on Windows).
 M4 acceptance remains **conditional** on the Windows manual checklist (W-1…W-22). The tab layout fix in particular has only been linted, never rendered.
+
+## 11. .NET 10 migration `chore/net10` (head `42e3723`)
+
+Verified by TesterBot on 2026-10-29 in a separate worktree (branch `tester/net10`, based on `42e3723`). `bin/obj` were cleaned before each run. Box: Linux, 8 cores, SDKs 8.0.427, 9.0.320 and 10.0.403.
+
+### 11.1 Results (actual output)
+
+| Step | Result |
+|---|---|
+| `dotnet --version` (global.json 10.0.403, rollForward latestFeature) | `10.0.403` |
+| `dotnet build AcsTool.sln -c Release` | 0 Error(s), 0 Warning(s) |
+| `dotnet test -c Release` (on `42e3723`) | Core 312/0/1, Proxy 97/0/0, Simulator 67/0/0, Presentation 54/0/0, so **530 passed / 0 failed / 1 skipped** (the skip is the live DNS test, OBS-03) |
+| `CI=true ./build.sh` (on `42e3723`) | 0 warnings; 529 / 0 / 1 (Core 311 + 1 skipped; coverage run) |
+| `CI=true ./build.sh` with the tests from 11.4 | 0 warnings; Core 322/0/3, Proxy 99/0/0, Simulator 67/0/0, Presentation 54/0/0, so **542 / 0 / 3** |
+| `dotnet list package --vulnerable` | none |
+| `dotnet list package --deprecated` | `xunit 2.9.3` "Legacy", alternative `xunit.v3` (informational only) |
+| No SYSLIB*, NU1510 or CA* warnings under AnalysisLevel 10.0-recommended | confirmed |
+| Stress: Engine + EndToEnd + TesterScenario tests (11 tests), 10 sequential runs | 10/10 green, 43 s in total |
+| Stress: 16 busy loops on 8 cores, 2 rounds × 3 parallel processes | 6/6 green (loadavg 9.45 → 12.46), 15 s |
+| `dotnet publish src/AcsTool.App -c Release -r win-x64 --self-contained true` (from Linux) | exit 0, 0 warnings; 169 MB, 409 files; `AcsTool.exe` 162,816 B; runtimeconfig `includedFrameworks` NETCore/WindowsDesktop/AspNetCore 10.0.14; `System.Security.Cryptography.ProtectedData.dll` is bundled; no trim, single-file or R2R settings, so no IL warnings |
+
+### 11.2 Custom CA matrix (openssl 3.5.7 files, driven through the real code)
+
+A throwaway harness called `TlsValidatorFactory.LoadCertificate` and `ProxyServer.StartAsync` (via `CpeSessionTracker.PrepareTls`). As a comparison it also called the obsolete `new X509Certificate2(byte[])`, which the pre-migration code used for non-PEM files. "Validates" means: the loaded cert used as the only `CustomRootTrust` anchor validates `leaf ← intermediate ← root`.
+
+| File | net10 loader | Validates | Proxy start | Old byte[] ctor |
+|---|---|---|---|---|
+| root PEM / `.crt` / DER / CRLF PEM | OK, root | yes | Running | OK |
+| OpenSSL `BEGIN TRUSTED CERTIFICATE` | OK, root | yes | Running | OK |
+| PFX, no password (key+cert / cert only / `-legacy` RC2) | OK, root | yes | Running | OK |
+| PFX, password `secret` | CryptographicException: *The certificate data cannot be read with the provided password, the password may be incorrect.* | – | ProxyStartException: *Custom CA file '…' could not be loaded: The certificate data cannot be read with the provided password, the password may be incorrect.* | same CryptographicException |
+| PFX leaf + int + root, no password | OK, **root** (a CA is preferred) | yes | Running | OK, **leaf** (behavior change, an improvement) |
+| PEM bundle root, then intermediate | OK, root | yes | Running | OK |
+| PEM bundle intermediate, then root | OK, **intermediate** | **NO** | Running | OK, intermediate (NET10-02) |
+| key PEM, then cert PEM | OK, root | yes | Running | OK |
+| leaf cert as "CA" | OK, leaf | NO | Running (no warning) | OK |
+| UTF-8 BOM + PEM | CryptographicException: *The certificate contents do not contain a PEM with a CERTIFICATE label, or the content is malformed.* | – | ProxyStartException (same text) | **OK** (NET10-01) |
+| garbage / whitespace only / truncated DER | CryptographicException: *ASN1 corrupted data.* | – | ProxyStartException | same |
+| truncated PEM / corrupted base64 | CryptographicException: *…do not contain a PEM with a CERTIFICATE label, or the content is malformed.* | – | ProxyStartException | ASN1 corrupted data |
+| empty file (0 bytes) | CryptographicException: *ASN1 corrupted data.* | – | ProxyStartException | **NullReferenceException** (escaped PrepareTls' catch before; fixed by the migration) |
+| missing file | FileNotFoundException | – | ProxyStartException: *…Could not find file '…'.* | same |
+
+There were no crashes. Every invalid input becomes a `ProxyStartException` with the file path.
+
+### 11.3 Findings
+
+- **NET10-01 (Low/Medium, pre-existing; the PEM path is unchanged since net8).** A PEM file that starts with a UTF-8 BOM is rejected. Windows editors can save one this way. Fix idea: strip a BOM, or decode as UTF-8, before the PEM sniff. Repro: `TesterCaMatrixTests.Utf8BomPem_Loads` (skipped).
+- **NET10-02 (Low/Medium, pre-existing).** Only the first certificate of a PEM bundle is used. An intermediate-first `ca-bundle` loads without error, the proxy starts, and every TLS handshake then fails the chain. Leaf-as-CA behaves the same way, silently. Fix idea: `X509Certificate2Collection.ImportFromPem` and add all of them to `CustomTrustStore`, and/or warn when no self-signed CA is present. On Linux, a non-self-signed anchor in CustomTrustStore did not validate. Repro: `PemBundle_IntermediateFirst_TrustsTheRoot` (skipped).
+- **NET10-03 (Low).** The password-protected PFX error says "with the provided password", but the UI has no CA password field. Suggest a hint such as "password-protected PFX is not supported; export the CA as PEM/DER".
+- **NET10-04 (Low).** The PFX pick is "first certificate with CA=true". For leaf+int+root the root came out first here, but if a file lists the intermediate first, the intermediate would be picked (see NET10-02). Prefer a self-signed CA. `LoadPkcs12Collection` is called without `X509KeyStorageFlags.EphemeralKeySet`. On Windows that may persist the PFX private keys of the CA file, even though only the public anchor is needed. Check this on Windows (W-24).
+- **NET10-05 (Info).** xunit 2.9.3 is flagged deprecated ("Legacy", successor xunit.v3). This isn't a blocker.
+- **DPAPI review.** `DpapiSecretProtector` is unchanged: the same `"dpapi:"` prefix, entropy `AcsTool.v1` and `CurrentUser` scope. Only the PackageReference was removed. On net10.0-windows the assembly comes from Microsoft.WindowsDesktop.App. The self-contained publish bundles it, and a framework-dependent install needs the Desktop Runtime anyway. There is no PlatformNotSupported path. The App is Windows-only, and Core/tests use `PlainSecretProtector` via `TryAddSingleton`. The blob format is the OS's `CryptProtectData`, so values saved by the net8 build should decrypt. This **cannot be verified on Linux** (W-23).
+
+### 11.4 Tests added (branch `tester/net10`)
+
+- `tests/AcsTool.Core.Tests/TesterCaMatrixTests.cs` contains 13 tests, 11 active and 2 skipped repros (NET10-01/02). Both repros were confirmed to fail when un-skipped.
+  - Covered: password PFX, empty, whitespace, truncated PEM/DER, CRLF, key-before-cert PEM, root-first bundle, leaf+chain PFX picks a CA, cert-only PFX, and leaf-as-CA characterisation.
+- `ProxyServerTests.Start_CustomCaFileEmptyOrGarbage_ProxyStartExceptionWithClearMessage` (2 cases).
+
+### 11.5 Windows smoke checklist additions for .NET 10 (run after W-1…W-22)
+
+| # | Step | Expected |
+|---|---|---|
+| W-23 | With the **previous (net8) build**, save an upstream/Digest password in a profile and in settings. Close it, install or run the net10 build as the same Windows user, and reopen | Passwords are shown/used unchanged (the Digest 401 flow still works). There is no "secret could not be decrypted" banner. `%APPDATA%\AcsTool` files still hold `dpapi:` values. Save again and reopen in net10: round trip OK |
+| W-24 | Proxy → TLS mode Custom CA with root CA as PEM, DER (`.cer`), and password-less PFX, against an HTTPS upstream signed by that CA | Each format starts and the TLS handshake succeeds. For PFX, `certmgr.msc` / `%APPDATA%\Microsoft\Crypto\RSA` gains no new persisted key (NET10-04) |
+| W-25 | Custom CA files that should fail: password-protected PFX, an empty file, and a PEM saved by Notepad as "UTF-8 with BOM" | A clear start error with the file path and no crash. The BOM case currently fails (NET10-01). The PFX message mentions a password (NET10-03) |
+| W-26 | Custom CA = an `intermediate, root` PEM bundle | Currently: the proxy starts, then the TLS chain fails (NET10-02). Record the exact UI/log text |
+| W-27 | Copy `out/win-x64` (from `publish.ps1`) to a **clean Windows 10/11 machine or VM without any .NET installed**. Run `AcsTool.exe`, then `AcsTool.exe --smoke-exit` | The app window opens with no "install .NET" prompt. `--smoke-exit` returns 0. Logs appear under `%LOCALAPPDATA%\AcsTool\logs` |
+| W-28 | On the same machine: start the proxy, bind a port, pass the Windows Firewall prompt, and run one simulator session | It works without any .NET installation (Kestrel/AspNetCore bundled) |
+| W-29 | File → About (or the log header) | Runtime reported as .NET 10.0.x |
+| W-30 | At 150% DPI with a dark/high-contrast Windows theme | WPF on net10 renders as before (no new theme regressions; the app keeps the Light theme) |
+
+### 11.6 Verdict
+
+**PASS (conditional on W-23…W-28 on Windows).** The build, tests, CI, stress and self-contained publish are clean on .NET 10. The CA loader migration did not regress any format the old code accepted, apart from the pre-existing BOM/bundle issues (NET10-01/02, not caused by the migration). It improves the empty-file case and leaf+chain PFX handling. DPAPI compatibility and the clean-machine launch can only be proven on Windows.

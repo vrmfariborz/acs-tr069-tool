@@ -1,14 +1,14 @@
 # AcsTool — ACS TR-069 Proxy & Inform Simulator
 
-A Windows desktop tool (WPF, .NET 8) that sits between CPEs and an ACS as a capturing TR-069/CWMP proxy, and simulates CPEs sending Informs.
+A Windows desktop tool (WPF, .NET 10) that sits between CPEs and an ACS as a capturing TR-069/CWMP proxy, and simulates CPEs sending Informs.
 See `docs/PLAN.md` for the design and `docs/IMPLEMENTATION_NOTES.md` for status, deviations and known gaps.
 
 ## Projects
-- `src/AcsTool.Core`: CWMP model, parser, builders, session store, settings (net8.0).
-- `src/AcsTool.Proxy`: Kestrel-based capturing proxy (net8.0).
-- `src/AcsTool.Simulator`: CPE profiles and Inform simulator (net8.0).
-- `src/AcsTool.Presentation`: UI-free view models (net8.0).
-- `src/AcsTool.App`: WPF shell (net8.0-windows). It compiles on Linux with `EnableWindowsTargeting`.
+- `src/AcsTool.Core`: CWMP model, parser, builders, session store, settings (net10.0).
+- `src/AcsTool.Proxy`: Kestrel-based capturing proxy (net10.0).
+- `src/AcsTool.Simulator`: CPE profiles and Inform simulator (net10.0).
+- `src/AcsTool.Presentation`: UI-free view models (net10.0).
+- `src/AcsTool.App`: WPF shell (net10.0-windows). It compiles on Linux with `EnableWindowsTargeting`.
 - `tests/*`: xUnit tests. `AcsTool.Testing` holds FakeAcs and the shared fakes.
 
 ## Build and test (Linux or Windows)
@@ -20,7 +20,7 @@ dotnet test AcsTool.sln -c Release
 ```
 
 ## Running on Windows
-Requires the .NET 8 SDK (x64) to build. The published exe is self-contained and does not need the SDK.
+Requires the .NET 10 SDK (10.0.403 or a newer 10.0.x, see `global.json`; x64) to build. The published exe is self-contained and does not need the SDK.
 ```powershell
 dotnet build AcsTool.sln -c Release
 dotnet test AcsTool.sln -c Release

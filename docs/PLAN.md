@@ -192,7 +192,7 @@ Priority: **MVP** = must be in the MVP cut (milestones M0–M4); **v1** = later 
 | # | Decision | Rationale |
 |---|---|---|
 | D1 | **Kestrel** (in-process, `WebApplication.CreateSlimBuilder`, single terminal middleware) as the proxy listener | §3.2: no http.sys URL ACL/admin, cross-platform (Linux tests), connection IDs and raw headers available, and works with `TestServer`. |
-| D2 | **`net8.0`** via one MSBuild property `AcsToolTfm` in `Directory.Build.props` | As requested. .NET 8 support ends 2026-11-10, so a one-line switch to `net10.0` (LTS) is pre-planned (R1/Q1). |
+| D2 | **`net8.0`** via one MSBuild property `AcsToolTfm` in `Directory.Build.props` | As requested. .NET 8 support ends 2026-11-10, so a one-line switch to `net10.0` (LTS) is pre-planned (R1/Q1). **Done: now `net10.0` (Q1 resolved).** |
 | D3 | **`AcsTool.Presentation` (net8.0)** holds all ViewModels (CommunityToolkit.Mvvm) | ViewModels are unit-testable on Linux. WPF-specific code (Dispatcher, dialogs, converters, AvalonEdit) stays in `AcsTool.App` behind interfaces. |
 | D4 | **Hand-written parser (XmlReader→XDocument) and builders**, no WCF/SoapCore | CWMP is a small, quirky SOAP 1.1 dialect (soap-enc arrays, namespace variance, unqualified children). We need tolerance and full control. |
 | D5 | **Store is the source of truth; `Channel<SessionChange>` carries only change notifications**, coalesced by a UI pump | A dropped or late notification cannot corrupt state, and batching keeps UI updates ≤10 Hz (NFR-03). |
@@ -1727,7 +1727,7 @@ Mandatory scenario list (each needs at least one integration test):
 
 | ID | Question | Default decision (implemented unless DevOrchestrator/user overrides) |
 |---|---|---|
-| Q1 | Stay on .NET 8 or move to .NET 10 LTS given the Nov 2026 end of support? | Build on **net8.0** as requested; keep `AcsToolTfm` so switching is trivial. Recommend switching to net10.0 before the first release. |
+| Q1 | Stay on .NET 8 or move to .NET 10 LTS given the Nov 2026 end of support? | **Resolved (2026-10-29): net10.0.** The user chose .NET 10 LTS; `AcsToolTfm` is now `net10.0` (App `net10.0-windows`), SDK 10.0.403+ (branch chore/net10; see IMPLEMENTATION_NOTES "Migration to .NET 10"). Originally: build on net8.0, keep `AcsToolTfm` so switching is trivial. |
 | Q2 | HTTPS between CPE and proxy needed (CPEs that only accept https ACS URLs)? | Not in MVP. Stretch T10.7 with a user-supplied or self-signed PFX. Most test modems accept http. |
 | Q3 | Should the proxy support multiple upstream ACSes (routing by path or device)? | No. One upstream per proxy instance. Users can change the upstream and restart. |
 | Q4 | Should captured sessions persist across app restarts automatically? | No. In-memory only. Explicit export/import. Avoids disk growth and secrets on disk. |
