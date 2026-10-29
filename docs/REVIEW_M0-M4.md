@@ -238,3 +238,90 @@ None.
 3. **M5, M6, M4**, in that order: tighten the bounded-memory design.
 4. **m1, m5, m6, m11, m12**: robustness.
 5. The test hygiene items in m14.
+
+## Re-review (fix/review-m0-m4 @ dfae3b3)
+
+**Reviewer:** ReviewerBot · **Date:** 2026-10-29 · **Range:** `main` (e0be76f) … `fix/review-m0-m4` (dfae3b3), 15 commits, 43 files, +1261/−147.
+This was a review only. I built and tested in a private clone at `/tmp/rr-acs` and used ephemeral ports. One throw-away probe test was used and then deleted.
+
+### Verdict: **Approve with conditions**
+
+The branch is a clear improvement. 14 of the 15 claimed fixes hold up, and each has a targeted test. One condition blocks the merge:
+
+1. **R-M1** (below): fix it and add a VM test. Proxy settings saved in the Settings window while the proxy is running are still thrown away on the next Start. That is the same data loss as M1, so M1 is only partly fixed. The fix is about five lines.
+
+Strongly recommended for the same follow-up commit, though not blocking on its own: **m9** (PasswordBox; see the deferred-items call) and **R-m1** (Simulator tab double scrollbars at the default window size).
+
+### Status of each claimed fix
+
+| ID | Status | Evidence (code → test) |
+|---|---|---|
+| M1 | **Partially fixed** | Load path fixed: `MainViewModel.InitializeAsync` calls `Proxy.LoadFrom`, and `ProxyViewModel.cs:80-85` follows `SettingsHolder.Changed` while stopped. Tests: `PersistedSettings_ReachProxyVmStoreFeedAndEngine_StartKeepsThem`, `SettingsWindowSave_WhileStopped_UpdatesProxyTabAndLimits`. **Still broken when settings are saved while Running**: see R-M1 (confirmed with a probe). |
+| M2 | **Fixed** | `CoreServiceCollectionExtensions.cs:28-35` subscribes `store.UpdateLimits`. `InMemorySessionStore.UpdateLimits` evicts immediately. `SimulationEngine.cs:78-85` rebuilds the gate when no CPE is running (documented). Tests: the same VM test (MaxSessions=10 keeps 10 of 30; engine gate=3), plus `UpdateLimits_Lowered_EvictsImmediately…`. Caveat: R-n3. |
+| M3 | **Fixed** | `CpeSessionTracker.cs:125` uses `old.AwaitingFinalEmpty ? FinalOutcome(old) : Superseded`. Test: `Resolve_NewInformDuringCompletionGrace_EndsOldAsCompletedNotSuperseded` (FakeTimeProvider, 500 ms into the grace window). |
+| M4 | **Fixed** | `MessageSummarizer.AddCapped` caps every list at 200 and adds an "… and K more" field. `InMemorySessionStore.EstimateBytes` counts body, headers, summary fields and warnings on both request and response. Tests: `Summarize_HugeGpvResponse_FieldsCappedWithMoreMarker`, `CapturedBytes_CountsHeadersAndSummaryFields_NotJustBodies`. Remaining gap: R-n4. |
+| M5 | **Fixed** | `CwmpClientSession.cs:209` uses `r.MaxCapturedBodyBytes`, which `HttpCwmpTransport.cs:107` sets from capture settings. Tests: `ResponseCapture_TruncatedToTransportLimit`, `Response_CarriesConfiguredCaptureLimit`. |
+| M6 | **Fixed** | `SessionFeedViewModel.CoalescePaused/ResumeFromPause` coalesce by id and keep no snapshots. Above 10,000 ids, or on a resync, the feed resyncs fully. Sessions evicted during the pause turn into Removed. Tests: `Pause_CoalescesById_EvictedSessionsDoNotReappear`, `Pause_ManyDistinctSessions_FallsBackToResync_Bounded`. |
+| m1 | **Fixed** | `CpeSessionTracker.cs:282-283`: Canceled → `SessionOutcome.Canceled`. Test: `ProxyStoppedDuringInFlightExchange_SessionCanceled`. The CPE still receives a 502 during shutdown (R-n2, cosmetic). |
+| m5 | **Fixed** | `CwmpClientSession` catch-all → `End(ProtocolError, "Internal error…")`. `SimulatedCpe.cs:168-178` keeps the loop alive in an Error state. Tests: `UnexpectedException_EndsStoredSessionAsProtocolError`, `UnexpectedSessionException_LoopSurvives_NextTriggerRuns`. |
+| m6 | **Fixed** | `SessionFeedPump`: each batch has its own try/catch, each consumer is isolated, a resync is forced and a warning banner is shown. Test: `Pump_ThrowingConsumer_OthersStillServed_BannerShown_NextBatchResyncs`. Caveat: R-n1. |
+| m8 | **Fixed** | `PlatformServices.cs:80-84` throws `SecretUnprotectException` (Cryptographic or Format). The editor keeps the ciphertext unless the password is retyped (`CpeProfileEditorViewModel` `_passwordEdited`). Load shows a banner. `SimulationEngine.cs:64-74` refuses Start with a validation error. Test: `UndecryptablePassword_BannerShown_CiphertextKeptOnSave_StartRefused` (fake protector; real DPAPI can't be run on Linux). |
+| m10 | **Fixed** | Both validators reject userinfo (`ProxyViewModel` and `SettingsViewModel`, using `UrlUtil.UserInfoRejectedMessage`). The log line (`ProxyServer.cs:101`) and the session target (`CpeSessionTracker.cs:206`) are redacted. `UpstreamForwarder.BuildUpstreamUri` already drops userinfo (it uses `Authority`), so captures are clean too. Tests: `UrlUtil_RedactsUserInfo`, `UpstreamWithCredentials_RejectedWithClearMessage`, `UpstreamUrlWithCredentials_NotForwarded_RedactedInSessionTarget`. |
+| m11 | **Fixed** | `ProxyServer.cs:61-62` maps `localhost` to `IPAddress.Loopback`. All start failures now clean up the app, the CTS and TLS, and set Faulted. The VM catch-all sets Faulted and shows a banner. Tests: `Start_Localhost_BindsLoopback`, `Start_UnexpectedFailure_FaultedAndCleanedUp_ThenRestartable`, `StartFailsWithNonBindError_FaultedWithBanner_ButtonUsable`. |
+| m12 | **Partially fixed (as declared)** | The sweeper is guarded (`CpeSessionTracker.Sweep` → `SweepCore`; test `Sweep_SinkThrows_DoesNotEscapeTimerCallback`). The custom CA is loaded once per Start (`PrepareTls`), and a missing or invalid file fails Start with `ProxyStartException` (test `Start_CustomCaFileMissing_…`). It is disposed after `EndAllAsync`, once Kestrel has already been disposed, so in-flight sessions can't use a disposed CA. Deferred: the handler is still created under the lock. That is acceptable now that it does no I/O. |
+| m13 | **Fixed** | `HeaderRewriter.RewriteSetCookie` adds a `cpePath` parameter and an RFC 6265 §5.1.4 `PathMatches` check, and rewrites Path to "/" with a note (`ProxyRequestHandler.cs:85` passes `req.PathAndQuery`). Notes corrected. Tests: `RewriteSetCookie_PathNotMatchedByCpePath_RewrittenToRoot`, `SetCookiePath_ForUpstreamBasePath_RewrittenSoCpeReplaysIt`. |
+| m14 | **Fixed** | The 1.2 s and 2.2 s `Task.Delay` waits are gone; idle, grace and E2E tests run on `FakeTimeProvider`. New negative and fidelity tests: Basic auth through the proxy, the ManagedPerCpe jar, response-direction byte identity, multi-valued header relay. Remaining real-time code is the existing network tests in `NetTests` (5 s caps) and the 10 ms poll in `TestUtil.WaitUntil`, both acceptable. |
+
+### WPF layout commit c8c0861
+
+The approach is correct: each tab holds a ScrollViewer, and the view is sized to the viewport with Min sizes, so star rows and DataGrid virtualization keep a finite height. Fixed widths became star/Auto + MinWidth, toolbars became WrapPanels, and `SessionDetailView` rows changed from 160/* to 1*/2*. It is pure XAML with no code-behind, so MVVM is unaffected, and the `XamlLayoutTests` lint is a reasonable stand-in for rendering on Linux. Issues:
+- **R-m1 (Minor)** `MainWindow.xaml:44` sets `SimulatorView MinHeight="760"`. At the default 1280×820 window, the tab viewport is roughly 660–690 px (title bar, header, the always-shown firewall banner, the tab strip and the status bar). So the Simulator tab **always** shows an outer vertical scrollbar, and the feed at the bottom starts partly hidden. Inside it, `SimulatorView.xaml:29` (`DockPanel MinHeight="520"` in a 3* row of about 435 px) also shows the inner editor scrollbar. The result is two nested vertical scrollbars at the default size, and the mouse wheel over the editor never reaches the outer one. **Fix:** set the view MinHeight to the sum of the row minimums (~560) and the editor MinHeight to about 360, or drop the inner ScrollViewer. Check on Windows.
+- **R-n5 (Nit)** I can't verify the viewport-bound Width/Height pattern on Linux. At the threshold where a scrollbar appears or disappears, it can oscillate for a frame. Include "resize slowly across MinWidth/MinHeight" in the Windows smoke checklist. `ResizeMode="CanResize"` is the default, so it's redundant but harmless.
+
+### New findings in the main...fix diff
+
+| ID | Severity | Location | Finding | Fix |
+|---|---|---|---|---|
+| **R-M1** | **Major** | `src/AcsTool.Presentation/Proxy/ProxyViewModel.cs:80-85`, `:213-225` | The `Changed` handler applies persisted proxy settings only while `CanEdit && _server is null`. Nothing reloads them when the proxy stops. If proxy settings are saved in the Settings window while the proxy is running (the footer says "Proxy changes apply on the next Start"), then Stop → Start writes the Proxy tab's stale values back over them. Probe: changed upstream to `http://changed.example:9000/acs` while running, then Stop → Start; the persisted value reverted to the old upstream. | In `StopAsync` (after `State = Stopped`) and in the Faulted paths, call `LoadFrom(_settings.Current.Proxy)`. The tab is read-only while running, so there are no user edits to lose. Add a VM test for save-while-running → Stop → Start. |
+| R-n1 | Nit | `src/AcsTool.Presentation/Feed/SessionFeedPump.cs:125-128` | The forced resync after a failure is only delivered when the store produces the next change. On an idle store the list stays out of sync until then. | After `ReportFailure`, also queue an empty flush, e.g. a `Task.Delay(FlushInterval)` then `FlushAsync(empty)`. |
+| R-n2 | Nit | `src/AcsTool.Proxy/ProxyRequestHandler.cs:141` | Exchanges canceled by a proxy stop still return 502 to the CPE. The outcome is now correct (m1). | Return 503 for `UpstreamErrorKind.Canceled`. Optional. |
+| R-n3 | Nit | `src/AcsTool.Simulator/Engine/SimulationEngine.cs:81-85` | CPEs that are stopping (already removed from `_cpes`) still hold the old gate, so for a moment concurrency can exceed the new limit. The old gate is never disposed. | Documented. Acceptable. |
+| R-n4 | Nit | `src/AcsTool.Core/Parsing/MessageSummarizer.cs:225` | List *length* is capped, but a single field *value* is not (one multi-MB parameter value is copied into the summary). It now counts toward the budget, so memory stays bounded. | Truncate field values to about 1–4 KB with "…". |
+| R-n6 | Nit | `ProxyViewModel.cs:80-85` | A Settings-window save while stopped overwrites unsaved edits on the Proxy tab. That is arguably correct, since the Settings window showed the persisted values. | None needed; optionally mention it in the footer text. |
+
+I found no new Blockers. Thread safety of the new code is fine: `UpdateLimits` and `Limits` take `_gate`; `_customCa` is read and written under `_lock`; the feed VM's pause state is touched only on the UI thread via `Apply`.
+
+### Build and tests (private clone `/tmp/rr-acs` @ dfae3b3)
+
+- Build (Release, also `CI=true --no-incremental`): **0 warnings, 0 errors**.
+- Tests, full suite with Perf included: **484/484 passed**, 0 skipped. Core 309, Proxy 67, Simulator 63, Presentation 45. Previously 447 without Perf (448 with), so **+36 tests**.
+- Line coverage before → now: Core 87.2 → **87.0** %, Proxy 89.8 → **89.3** %, Simulator 89.8 → **89.7** %, Presentation 83.5 → **85.1** %. All are above the 80 % gate.
+- Not verified: WPF rendering and the Windows smoke checklist (c8c0861 especially), real DPAPI (m8 tested only with a fake protector), and HTTPS/TLS at runtime for the CustomCa path (only the missing-file path is tested).
+
+### Deferred items: does each block the merge?
+
+| Item | Blocks? | Reasoning |
+|---|---|---|
+| m12 (handler under lock) | No | With the CA preloaded, handler creation does no I/O and is cheap. The deferral is reasonable. |
+| m2 (late empty POST → orphan row) | No | Cosmetic: an extra orphan row. No data loss and no wrong outcome on the real session. Fix in M5. |
+| m3 (cookie-pair cross-CPE correlation) | No | Needs several CPEs that share a cookie value (e.g. an LB cookie) and fall through to the cookie tier. Connection id and IP+DeviceKey cover the common case. Track it for M5. |
+| m4 (simulator captures post-response cookies) | No | Only the capture is inaccurate; traffic on the wire is correct. |
+| m7 (pretty-print race) | No | UI cosmetic. |
+| **m9 (password in a plain TextBox)** | **No, but bundle it with R-M1** | See below. |
+| m15 (Settings ✕ keeps edits, OnClosing hang) | No | Edge-case UX. No data corruption. |
+| n1–n8 | No | Nits. |
+
+**m9 call.** I don't consider m9 a merge blocker for *this* branch, for three reasons. The branch didn't introduce it, and merging strictly improves security (m8, m10). The secret is a lab CPE→ACS credential that the user types in themselves, and it's already DPAPI-encrypted at rest. The exposure is shoulder-surfing or screen-sharing, not leakage into storage, logs or exports. I'd treat it as a release blocker for the MVP sign-off rather than a merge blocker.
+
+That said, the swap is small, about 30–40 lines:
+- a `PasswordBox` with a small attached-property helper (`PasswordBoxAssistant.BoundPassword`) or a `PasswordChanged` code-behind handler that sets `vm.Password`;
+- a "show" toggle if wanted;
+- a guard so that loading a profile doesn't set `_passwordEdited` (the m8 logic). The toolkit's equal-value check already prevents a loop, but add a VM test that loading plus a re-push of the same value keeps the ciphertext.
+
+This branch already edited that exact line (`SimulatorView.xaml:89`), and a follow-up commit is needed for R-M1 anyway, so I recommend doing m9 in that same commit. If DevOrchestrator wants it as a hard condition, I won't object: the cost is low and the risk is contained.
+
+### Required before merge
+
+1. Fix R-M1 and add its test. Then M1 becomes Fixed.
+
+Recommended in the same commit: m9 (PasswordBox) and R-m1 (Simulator MinHeight). After that, run the Windows smoke checklist, including resizing across the minimum sizes.
