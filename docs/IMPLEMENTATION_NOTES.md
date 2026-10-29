@@ -6,7 +6,7 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 
 | Milestone | Status | Main contents |
 |---|---|---|
-| M0 (T0.1–T0.3) | done | Solution, `Directory.Build.props` with a single `AcsToolTfm` (net8.0), central package management, analyzers (`latest-recommended`, warnings become errors when `CI=true`), `build.sh`/`build.ps1`/`publish.ps1`, GitHub CI (Linux build+test; Windows build+publish+`--smoke-exit`). |
+| M0 (T0.1–T0.3) | done | Solution, `Directory.Build.props` with a single `AcsToolTfm` (net8.0 at the time; net10.0 since the .NET 10 migration), central package management, analyzers (`latest-recommended`, warnings become errors when `CI=true`), `build.sh`/`build.ps1`/`publish.ps1`, GitHub CI (Linux build+test; Windows build+publish+`--smoke-exit`). |
 | M1 (T1.1–T1.8) | done | `AcsTool.Core`: CWMP model and namespaces, tolerant parser, summarizer, deterministic builders (InformBuilder), in-memory session store with change feed, AuthRedactor, net helpers (UpstreamSender, ErrorClassifier, PhaseTracker, TLS, connect callback), settings and persistence. |
 | M2 (T2.1–T2.6) | done | `AcsTool.Proxy`: Kestrel `ProxyServer`, `CpeSessionTracker`/`ProxySession`, `HeaderRewriter`, `UpstreamForwarder`, `ProxyRequestHandler`, DI. `AcsTool.Testing.FakeAcs` with Basic/Digest auth, cookies, delays, status codes and abort. |
 | M3 (T3.1–T3.7) | done | `AcsTool.Simulator`: profiles, validator, JSON profile store, parameter store, HTTP transport, RPC dispatcher (GRM/GPN/GPV/SPV), client session state machine, `SimulatedCpe` and `SimulationEngine`, sim → proxy → FakeAcs end-to-end test. |
@@ -15,7 +15,7 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 ## Deviations
 
 ### Build and tooling
-- `global.json` requires SDK 8.0.427 or newer within 8.0.x (`rollForward: latestFeature`; it was `latestMajor` until the CI fix below, which let SDK 10 analyzers in). The TFM stays net8.0 through `AcsToolTfm`.
+- `global.json` requires SDK 10.0.403 or newer within 10.0.x (`rollForward: latestFeature`). Until the .NET 10 migration it required 8.0.427+; before the CI fix below it used `latestMajor`, which let SDK 10 analyzers in. The TFM is net10.0 through `AcsToolTfm` (see "Migration to .NET 10").
 - NSubstitute is not used; the tests rely on hand-written fakes (`FakeAcs`, `FakeTransport`, `RecordingSink`, TestKit). AvalonEdit is not used either; the MVP raw and pretty views are read-only monospace `TextBox`es. Reason: fewer dependencies, and the fakes were simpler and more deterministic.
 - Some CA rules are suppressed in `.editorconfig`:
   - Product code: CA2007 (ConfigureAwait; the library convention is enforced by review), CA1848/CA1873 (LoggerMessage delegates), and CA1707/CA1711/CA1716/CA1720 (naming of CWMP domain types such as `Fault`, `Event`, `...Stream`).
