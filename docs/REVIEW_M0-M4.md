@@ -325,3 +325,47 @@ This branch already edited that exact line (`SimulatorView.xaml:89`), and a foll
 1. Fix R-M1 and add its test. Then M1 becomes Fixed.
 
 Recommended in the same commit: m9 (PasswordBox) and R-m1 (Simulator MinHeight). After that, run the Windows smoke checklist, including resizing across the minimum sizes.
+
+### Re-review 2 (@ 8794603)
+
+**Reviewer:** ReviewerBot · **Date:** 2026-10-29 · **Range:** `d355a8a..8794603` (ea661de, dfffe3e, a2dd0a6, 97b6829, 8f94a11, 8794603).
+This was a review only. I built and tested in a private clone at `/tmp/rr2-acs` with ephemeral ports. One throw-away probe test was used and then deleted.
+
+#### Verdict: **Changes requested**: one item
+
+1. **R2-M1** (below): the m9 `PasswordBoxAssistant` never hooks `PasswordChanged` when the bound password starts out null. That is the default for every built-in profile and for any profile without a password. A password typed into such a profile is never written to the view model, so it is silently not saved. The fix is small (about 10 lines plus a Windows smoke step). Everything else is approved.
+
+#### Status of each item
+
+| Item | Status | Evidence |
+|---|---|---|
+| R-M1 (Settings save while running lost on Stop → Start) | **Fixed** | `ProxyViewModel.cs:230` (`StopAsync` → `LoadFrom(_settings.Current.Proxy)`), plus the same reload on both start-failure paths (`:198`, `:210`). My original scenario, re-run as a throw-away probe (save upstream while running → Stop → tab shows the new value → Start → persisted and reloaded from disk = new value): **passes**. CoderBot's tests: `SettingsWindowSave_WhileRunning_SurvivesStopThenStart`, `StartFails_TabReloadsPersistedSettings`. |
+| Settings window refresh on open | **OK** | `MainWindow.xaml.cs:41` → `SettingsViewModel.Refresh()` = `LoadFrom(_holder.Current)`. This removes the stale-snapshot problem (Proxy-tab Start values written back by a later Settings save). It doesn't make R-n6 worse: the window now always shows the persisted values the save will write, so the overwrite of unsaved Proxy-tab edits is visible to the user. Side benefit: edits left behind by closing with ✕ are discarded on the next open, which fixes the first half of m15. Nit R2-n3. |
+| m9 PasswordBox | **Not fixed** (R2-M1) | The XAML swap is done (`SimulatorView.xaml:88`, lint test `SimulatorPassword_IsAPasswordBox_NotPlainText`), and the VM side is right: `CpeProfileEditorViewModel.OnPasswordChanged(old, new)` treats null ↔ "" as no edit, so the m8 ciphertext survives the PasswordBox echo (test `PasswordBoxEcho_AfterLoad_IsNotAnEdit_CiphertextKept` covers the foreign, readable, typed and cleared cases). Loading a profile is not counted as a user edit: values pushed from the VM are written under the `Updating` guard, so no echo comes back. **But** the binding to the view isn't hooked when the password starts null: see R2-M1. Plaintext and leaks: the VM `Password` is a plain `string`. That's acceptable: `SecureString` is not recommended for new code, the secret is DPAPI-encrypted at rest, and it is no longer shown on screen. No log, `ToString` or capture contains `Password` (grep across `src`). `CpeProfile` holds only the ciphertext. |
+| R-m1 / NEW-01 MinHeights | **Fixed** | `MainWindow.xaml:44` sets the view MinHeight to 560. `SimulatorView.xaml` rows: 3* min 240, 5, 2* min 300 (sum 545 ≤ 560). Editor MinHeight is 360. At the default window (viewport about 660–690 px) the editor row gets about 390–410 px, so neither scrollbar appears. Lint test `SimulatorTab_MinimumsFitDefaultWindow_…`. |
+| NEW-02 splitter | **Fixed** | `SimulatorView.xaml:148` has `ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"` between two star rows. The lower pane is a single DockPanel (Running CPEs on top, then the feed/detail grid), so the splitter no longer sits next to an Auto row. The XAML is valid; only the indentation of the inner DockPanel is off. Test `SimulatorSplitter_ResizesEditorAgainstFeedArea`. |
+| BUG-01 (Fault to Inform → AcsFault) | **Fixed** | `CpeSessionTracker.cs:301-308`: a SOAP Fault answering an Inform returns `AcsFault` at once with a note, for any HTTP status. This matches CWMP: an Inform rejected with a Fault (e.g. 8005 Retry request) ends the session from the CPE's side, which retries later with backoff, so the old Abandoned label after the idle sweep was wrong. A Fault answering a later CPE response correctly does *not* end the session. The simulator already treats this the same way (`CwmpClientSession.cs:77-80`), so both sides are consistent. Tests: tracker theory for 200 and 500 plus the non-Inform negative case; TesterBot's E2E repro is un-skipped, and the characterization test is flipped to assert AcsFault within 2 s. Nits R2-n1, R2-n2. |
+| BUG-03 SkippableFact | **OK** | `Dns_NonexistentInvalidTld_Dns` skips only when `nonexistent.invalid` actually resolves (a hijacked resolver). A `SocketException` (the normal NXDOMAIN) means the test runs, and anything else fails loudly, so the skip can't hide a real failure. `Connect_UnroutableAddress_ConnectTimedOut` skips only when `ACSTOOL_SKIP_NET_TIMEOUT=1` is set explicitly. **When they run:** on a normal CI or dev machine both run. In this sandbox the DNS test is reported as Skipped (the resolver answers everything) and the connect test runs and passes. Recommendation: CI should not set `ACSTOOL_SKIP_NET_TIMEOUT`, and should alert if the DNS test is ever skipped there. |
+
+#### New findings (d355a8a..8794603)
+
+| ID | Severity | Location | Finding | Fix |
+|---|---|---|---|---|
+| **R2-M1** | **Major** | `src/AcsTool.App/Views/PasswordBoxAssistant.cs:14` and `:33-36` | `PasswordChanged` is subscribed only inside `OnBoundPasswordChanged`. That callback runs only when the attached property's *effective value changes*. The default is `null`, so when a profile's `Password` is null (all `DefaultProfiles`, any profile without a password, and the m8 "unreadable" case), binding null → null never fires the callback. The handler is then never attached, and **text typed into the PasswordBox never reaches `CpeProfileEditorViewModel.Password`**: the profile saves with no password and Digest/Basic auth fails. It starts working only after a profile with a non-null password has been selected once in that view instance. This is by inspection of standard WPF DP semantics; I can't render WPF on Linux. | Add an `Attach` attached property (`v:PasswordBoxAssistant.Attach="True"` in XAML) whose callback subscribes `PasswordChanged` without depending on any value. Alternatively, subscribe in a `Loaded` handler, or register the DP with a sentinel default that a binding never produces. Add a Windows smoke step: on a fresh install, type a password into the default profile → Save → restart → the CPE authenticates. |
+| R2-n1 | Nit | `src/AcsTool.Proxy/CpeSessionTracker.cs:301-308` | The Fault-to-Inform rule is checked before the 401 handling. A 401 challenge whose body happens to be a SOAP Fault would become AcsFault instead of starting the auth retry. That's rare, but the comment says the order exists for the 500 case. | Apply the rule only when `status is not (401 or 407)`. |
+| R2-n2 | Nit | same | A CPE that, against the spec, still sends an empty POST after the Fault now creates an orphan session (same root cause as m2). | Fold into the m2 fix (attach a late empty POST to a session that ended under 2 s ago). |
+| R2-n3 | Nit | `src/AcsTool.App/Views/MainWindow.xaml.cs:41` | `Refresh()` is called from code-behind. That's acceptable, but it's view-model state managed by the view. | Optionally expose an `OpenSettingsCommand` on `MainViewModel` that refreshes, then asks a window service to show it. |
+| R2-n4 | Nit | `src/AcsTool.App/Views/SimulatorView.xaml:149-182` | The nested DockPanel isn't indented, which makes the structure hard to read. | Reindent. |
+
+No regressions found elsewhere in the range. The docs (`IMPLEMENTATION_NOTES.md`, smoke checklist with the resize step) match the code.
+
+#### Build and tests (private clone `/tmp/rr2-acs` @ 8794603)
+
+- `CI=true` Release build: **0 warnings, 0 errors**. `Xunit.SkippableFact` 1.5.23 restores through central package management.
+- Full suite, Perf included: **519 passed, 1 skipped, 0 failed**: Core 308 + 1 skipped (DNS test, sandbox resolver), Proxy 95, Simulator 65, Presentation 51. These **match CoderBot's counts exactly**. Previous re-review: 484.
+- Line coverage before → now: Core 87.0 → **87.0** %, Proxy 89.3 → **89.7** %, Simulator 89.7 → **89.7** %, Presentation 85.1 → **85.2** %. All ≥ 80 %.
+- Not verified: WPF rendering and the Windows smoke checklist (includes R2-M1, the splitter and the MinHeights), real DPAPI, and HTTPS/CustomCa at runtime.
+
+#### Required before merge
+
+1. Fix R2-M1 and add a Windows smoke step for typing a password into a profile that has none. After that I approve the merge, with no further re-review needed beyond confirming the diff, as long as nothing else changes.
