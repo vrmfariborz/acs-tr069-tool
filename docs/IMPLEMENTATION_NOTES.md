@@ -65,6 +65,7 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 4. Select a session. The Raw tab shows the XML, the Pretty toggle formats it, and Authorization is redacted until revealed.
 5. Close the window. The proxy and simulator stop, and the process exits within a few seconds.
 6. Run `AcsTool.exe --smoke-exit`. It exits with code 0.
+7. Resize the main window slowly across its minimum size on both tabs. Scrollbars appear only below the minimum, the Simulator tab shows no scrollbar at the default size, and the Simulator splitter resizes the profile editor against the lower pane. (Rendering can't be checked on Linux.)
 
 ## Review fixes (docs/REVIEW_M0-M4.md, branch fix/review-m0-m4)
 
@@ -82,4 +83,12 @@ Decisions and deviations:
 
 Deferred:
 - **m12 (part):** The upstream `SocketsHttpHandler` is still created inside the tracker lock. The custom CA is now preloaded at Start (a missing or invalid file fails Start with `ProxyStartException`), so creating the handler does no I/O. Moving it out of the lock would mean restructuring `Resolve`, which is out of proportion to the remaining risk.
-- **Outside the requested scope, unchanged:** m2 (a late trailing empty POST becomes an orphan row), m3 (cookie-pair correlation ambiguity), m4 (simulator capture shows post-response cookies), m7 (pretty-print race), m9 (plaintext password TextBox), m15 (Settings window ✕ / OnClosing robustness), and nits n1–n8.
+- **Outside the requested scope, unchanged:** m2 (a late trailing empty POST becomes an orphan row), m3 (cookie-pair correlation ambiguity), m4 (simulator capture shows post-response cookies), m7 (pretty-print race), m15 (Settings window ✕ / OnClosing robustness), and nits n1–n8.
+
+Follow-up after the re-review and TesterBot's re-verification (fast-forwarded to TesterBot's `tester/m0-m4-fix`, d355a8a):
+- **R-M1:** The Proxy tab reloads the persisted proxy settings after Stop and after a failed Start. The Settings window (a singleton view model) also refreshes from the current settings each time it opens. Before this, a save made while the proxy was running was overwritten by stale tab values on Stop → Start, and the Settings window could show stale values and write them back. M1 is now fully fixed.
+- **m9:** The simulator password is a `PasswordBox` bound through the `PasswordBoxAssistant` attached property; values pushed by the view model are not echoed back. A PasswordBox can't hold null, so it reports "" after an empty or undecryptable password is loaded. The editor therefore doesn't count a null ↔ "" change as an edit, which keeps the m8 ciphertext-keeping intact. There is no "show password" toggle.
+- **R-m1/NEW-01:** The Simulator view MinHeight went from 760 to 560, and the row minimums (240 + 300) fit within it. The editor MinHeight went from 520 to 360. At the default window size there is no outer scrollbar. The inner editor scrollbar can still appear when the Running CPEs list is tall.
+- **NEW-02:** The Simulator layout now has three rows: editor, splitter, and a lower pane holding Running CPEs plus feed/detail. The splitter resizes the editor against that whole pane, not against the Auto-sized Running CPEs row.
+- **BUG-01:** A SOAP Fault answering the Inform ends the proxy session as AcsFault immediately. This is checked before the HTTP status, because SOAP 1.1 faults usually come with HTTP 500. A Fault answering any later CPE message still leaves the session open, because the ACS may continue. TesterBot's repro is un-skipped and the characterization test was flipped.
+- **BUG-03:** The environment-dependent network tests use `Xunit.SkippableFact` (1.5.23; xUnit 2.9 has no built-in dynamic skip), so they report Skipped instead of Passed.
