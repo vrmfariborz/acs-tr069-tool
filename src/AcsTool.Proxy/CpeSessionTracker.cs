@@ -83,7 +83,8 @@ public sealed class CpeSessionTracker : IAsyncDisposable
                     {
                         foreach (var old in sameIp.Where(s => s.DeviceKey == key).ToList())
                         {
-                            EndLocked(old, SessionOutcome.Superseded);
+                            // A session waiting only for an optional trailing empty POST has already completed (M3).
+                            EndLocked(old, old.AwaitingFinalEmpty ? FinalOutcome(old) : SessionOutcome.Superseded);
                         }
                     }
                     session = CreateLocked(req, summary.DeviceId, summary.Events ?? [], summary.Version, label: null, orphan: false, oneShot: false);

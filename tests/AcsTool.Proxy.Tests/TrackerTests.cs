@@ -91,6 +91,22 @@ public class TrackerTests
     }
 
     [Fact]
+    public void Resolve_NewInformDuringCompletionGrace_EndsOldAsCompletedNotSuperseded()
+    {
+        var s1 = Resolve(InformA, "c1");
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s1, CwmpMessageKind.Inform, Resp(200, [1]), CwmpMessageKind.InformResponse, []));
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s1, CwmpMessageKind.Empty, Resp(200, [1]), CwmpMessageKind.GetParameterValues, []));
+        Assert.Null(CpeSessionTracker.EvaluateEnd(s1, CwmpMessageKind.GetParameterValuesResponse, Resp(204), null, []));
+        Assert.True(s1.AwaitingFinalEmpty);
+        _time.Advance(TimeSpan.FromMilliseconds(500)); // inside the 2 s grace window
+        var s2 = Resolve(InformA, "c2");
+        Assert.NotSame(s1, s2);
+        Assert.Equal(SessionOutcome.Completed, _store.Get(s1.SessionId)!.Outcome);
+        Assert.Null(_store.Get(s2.SessionId)!.Ended);
+        Assert.Equal(1, _tracker.ActiveCount);
+    }
+
+    [Fact]
     public void Resolve_InformAfter401_ReusesSession()
     {
         var s1 = Resolve(InformA, "c1");
