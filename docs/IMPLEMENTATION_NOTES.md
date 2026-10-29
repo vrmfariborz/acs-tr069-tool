@@ -59,14 +59,14 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 - HTTPS proxy listener and TLS-mode tests are not in scope until M6.
 
 ## Manual smoke checklist (Windows, T4.6)
-1. Run `AcsTool.exe`. On the Proxy tab, set listen port 7547 and the upstream URL of a local ACS, then Start. The status bar shows "Proxy running".
+1. Run `AcsTool.exe`. On the Proxy tab, set listen port 7547 and the upstream URL of a local ACS, then Start. The status bar shows `Proxy: Running`.
 2. On the Simulator tab, create a TR-098 profile with ACS URL `http://127.0.0.1:7547/acs`, save it, start it, and click "Send Inform now".
 3. The feed shows a Proxy session and a Simulator session for the same device, and both end Completed. A proxied session without a trailing empty POST completes within about 3 s.
 4. Select a session. The Raw tab shows the XML, the Pretty toggle formats it, and Authorization is redacted until revealed.
 5. Close the window. The proxy and simulator stop, and the process exits within a few seconds.
 6. Run `AcsTool.exe --smoke-exit`. It exits with code 0.
 7. Resize the main window slowly across its minimum size on both tabs. Scrollbars appear only below the minimum, the Simulator tab shows no scrollbar at the default size, and the Simulator splitter resizes the profile editor against the lower pane. (Rendering can't be checked on Linux.)
-8. Password binding (review R2-M1). On a fresh install (no profiles or settings file yet), select the default profile and type a password into the Password field. Use credentials that an ACS requiring Basic or Digest auth accepts. Save and restart the app. Start the profile and click "Send Inform now". The CPE authenticates: the session shows an auth challenge followed by success and ends Completed, not AuthFailed. The password field shows dots and never plain text.
+8. Password binding (review R2-M1). On a fresh install (no profiles or settings file yet), click **+ From TR-098** first (no profile is created automatically), select the new profile and type a password into the Password field. Use credentials that an ACS requiring Basic or Digest auth accepts. Save and restart the app. Start the profile and click "Send Inform now". The CPE authenticates: the session shows an auth challenge followed by success and ends Completed, not AuthFailed. The password field shows dots and never plain text.
 
 ## Review fixes (docs/REVIEW_M0-M4.md, branch fix/review-m0-m4)
 

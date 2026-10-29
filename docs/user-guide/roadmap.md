@@ -9,12 +9,21 @@ These features are **planned but not in the app yet** (as of `main` at 7b8c906).
 | **HTTPS listener** for CPEs (planned: separate port, default 7443, off by default; self-signed certificate generated and kept in `%APPDATA%\AcsTool\certs`, or a PFX, or the Windows store) | The proxy listens on plain HTTP only. |
 | **TLS page in the Settings window** (mode, pins, CA file, protocols) and a **"Fetch server certificate"** probe that shows the SHA-256 to pin | Only the mode is on the Proxy tab; pins and CA path are [hand-edited in settings.json](proxy-mode.md#configuring-pinnedthumbprint-or-customca-hand-edit). |
 | **TLS details** in the detail pane (chip, pop-up, thumbprint) and banners for TLS problems before Start | The detail header shows a short TLS line; the thumbprint is captured but not shown. |
-| **Simulator TLS settings** in the profile editor; TLS facts on simulator sessions | Profiles always use Strict validation; simulator sessions record no TLS info. |
+| **Simulator TLS settings** in the profile editor; TLS facts on simulator sessions | Profiles use Strict unless `tls` is hand-edited in the profile file; simulator sessions record no TLS info. |
 | Optional **revocation checking** for Strict | Revocation is never checked. |
 | **CustomCa** fixes: multi-certificate PEM bundles, PEM files with a UTF-8 BOM | Only the first certificate is used; BOM files are rejected. |
 | **Cookie correlation fix** (review item m3): CPEs behind a load balancer sharing an affinity cookie | Two CPEs with the same cookie pair can be grouped into the same session. |
 
 Not in M5 (deferred): upstream **client certificates** (mutual TLS; `clientCertPfxPath` is unused), the negotiated protocol/cipher on the upstream leg, HTTP/2 inbound.
+
+## Planned fixes for known issues
+
+These are current behaviors with fixes planned; see [troubleshooting.md](troubleshooting.md#known-issues-fixes-planned) for workarounds.
+
+- **Show per-exchange notes.** The proxy records notes on single exchanges (`AuthChallenge`, cookie rewrites such as `Set-Cookie Domain stripped`, `3xx Location …`, `ACS answered the Inform with a SOAP Fault`), but the detail pane shows only session-level notes. The fix is to show the selected exchange's notes in the Summary tab.
+- **Simulator fault classification.** A SOAP Fault to the Inform sent with HTTP 500 shows as **⚠ HTTP error** in the simulator, but as **⚠ ACS fault** in the proxy. The simulator will check for the Fault first, like the proxy.
+- **Restore defaults keeps hand-edited TLS.** Restore defaults + Save will keep `proxy.tls` (pins, CA path) and `proxy.maxRequestBodyBytes` instead of resetting them.
+- **CustomCa error message.** *TLS mode CustomCa needs a CA certificate file (Settings → TLS).* will point to `proxy.tls.customCaPath` in `settings.json` instead of a page that doesn't exist yet.
 
 ## Auth and cookies follow-ups
 

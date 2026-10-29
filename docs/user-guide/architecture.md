@@ -61,12 +61,12 @@ flowchart LR
 
 For each request, `ProxyRequestHandler`:
 
-1. Reads the body (up to `maxRequestBodyBytes`; more → `413` and an orphan session note).
+1. Reads the body (up to `maxRequestBodyBytes`; more → `413` and a one-shot session labelled *Request body too large*).
 2. Parses it with `CwmpParser` (tolerant of unknown namespaces, prefixes and charset issues) and summarizes it.
 3. Asks `CpeSessionTracker` for the session (connection id → cookie pair → IP fallback → new orphan). An Inform always starts a new session and supersedes the device's older one from the same IP.
 4. Waits on the session's **gate** (`SemaphoreSlim(1)`), so exchanges of one session are serialized like a real CPE would do.
-5. Forwards through `UpstreamForwarder`: one `HttpMessageInvoker` per proxy start (`SocketsHttpHandler` with the TLS callback, connect callback with phase tracking, optional system proxy), `HeaderRewriter` for both directions, cookies per mode.
-6. Classifies failures (`ErrorClassifier`: DNS/Connect/TLS/Timeout+phase/…), answers the CPE (`502`/`504`, or aborts), and records the exchange.
+5. Forwards through `UpstreamForwarder`: one `HttpMessageInvoker` per CWMP session, created by `CpeSessionTracker` (`SocketsHttpHandler`, no automatic redirects, with the TLS callback, connect callback with phase tracking, optional system proxy), `HeaderRewriter` for both directions, cookies per mode.
+6. Records exchange notes (header rewrites, end-rule notes) on the exchange; only session-level notes are shown in the UI today. Classifies failures (`ErrorClassifier`: DNS/Connect/TLS/Timeout+phase/…), answers the CPE (`502`/`504`, or aborts), and records the exchange.
 7. Applies the end rules (see [How a session ends](proxy-mode.md#how-a-session-ends)). A 1 s sweep timer ends idle sessions and finalizes those waiting for the 2 s completion grace.
 
 `ProxyServer` owns Kestrel (`WebApplication.CreateSlimBuilder`), maps bind errors to `ProxyBindFailure` (port in use, access denied, address not available), and loads the custom CA once per start.
@@ -88,7 +88,7 @@ flowchart LR
 - `CwmpClientSession` runs one session: build Inform (`InformBuilder`), send, then the empty-POST/RPC loop until the ACS sends an empty response, within the 1,000-message and 10-minute limits. It records every exchange in the session store.
 - `RpcDispatcher` maps method names to handlers (GetRPCMethods, GetParameterNames, GetParameterValues, SetParameterValues) with per-RPC overrides from `rpcBehaviors`.
 - `ParameterStore` is the CPE's own copy of the parameters (thread-safe, ordered, typed validation for SetParameterValues).
-- `HttpCwmpTransport` owns one `HttpClient` per CPE (credentials, cookies, redirects, TLS options), with a 16 MiB response limit.
+- `HttpCwmpTransport` owns one `HttpMessageInvoker` per CPE (credentials, cookies, redirects, TLS options), with a 16 MiB response limit.
 
 ## Threading rules
 

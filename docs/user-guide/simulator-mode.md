@@ -191,11 +191,11 @@ If the ACS sends something that isn't a request (a response, a Fault, an Inform)
 |---|---|---|
 | `✔ Completed` | The ACS answered the CPE's empty POST with an empty response | `Idle`, Retry reset to 0 |
 | `🔒 Auth failed` | `401` even after sending credentials (note *ACS rejected the credentials (401)*) | `Error`, Retry +1 |
-| `⚠ HTTP error` | Any other non-2xx status. This includes a SOAP Fault sent with HTTP 500, the usual SOAP 1.1 style (the proxy labels that case ACS fault; see [troubleshooting](troubleshooting.md#the-proxy-says-acs-fault-the-simulator-says-http-error-for-the-same-session)). | `Error`, Retry +1 |
+| `⚠ HTTP error` | Any other non-2xx status. This includes a SOAP Fault sent with HTTP 500, the usual SOAP 1.1 style (the proxy labels that case ACS fault; this is a [known issue](troubleshooting.md#the-proxy-says-acs-fault-the-simulator-says-http-error-for-the-same-session) with a fix planned). | `Error`, Retry +1 |
 | `⚠ ACS fault` | The ACS answered the Inform with a SOAP Fault **and a 2xx status** (note shows code and string) | `Error`, Retry +1 |
 | `⚠ Protocol error` | Not an InformResponse to the Inform (including an empty one), an unparseable ACS message, too many messages, or an internal error | `Error`, Retry +1 |
 | `✖ Upstream error` | DNS, connect, TLS, timeout or connection failure; the error class is shown as in [proxy mode](proxy-mode.md#upstream-error-classes) | `Error`, Retry +1 |
-| `⊘ Canceled` | CPE stopped during the session, 10-minute limit | `Stopped` (or `Error`) |
+| `⊘ Canceled` | CPE stopped during the session (also during an `rpcBehaviors` NoResponse wait), the 10-minute limit, or the end of a NoResponse wait (note *simulated hang*) | `Stopped` (or `Error`) |
 
 A CPE in `Error` stays usable: the next Inform trigger tries again, with `RetryCount` one higher in the Inform. There is **no automatic retry** in this version.
 
@@ -216,7 +216,7 @@ Remember: a running CPE keeps the profile it was started with. After editing any
 1. **+ From TR-181**. Name it `Lab TR-181 #1`.
 2. Set **Serial** to something your ACS has never seen, e.g. `LAB181-0001`.
 3. Set **URL** to your dev ACS, e.g. `http://acs-dev.lab:7547/acs`. Fill **User**/**Password** if needed.
-4. In **Events**, untick `1 BOOT`, tick `0 BOOTSTRAP` and `1 BOOT`.
+4. In **Events**, tick `0 BOOTSTRAP` (keep `1 BOOT` ticked).
 5. **Save**, then **✉ Send Inform now**.
 6. In the feed, select the new session and read the exchanges: `Inform 00D09E-LAB181-0001 [0 BOOTSTRAP, 1 BOOT] 8 params` → `200 InformResponse`, then `(empty)` and whatever the ACS asks.
 7. If the ACS provisions the device with SetParameterValues, check the response in the Summary tab (`SPVResponse status=0`) or the fault list.
@@ -225,13 +225,14 @@ Remember: a running CPE keeps the profile it was started with. After editing any
 
 1. **Proxy tab:** upstream = your ACS, **▶ Start**.
 2. **Simulator tab:** keep the ACS URL `http://127.0.0.1:7547/acs` (the default).
-3. **Send Inform now**. The Simulator feed shows the CPE's view (Client `sim:00D09E-…`), the Proxy feed shows the same session as the proxy saw it (Client `127.0.0.1:<port>`), including the ACS's headers and any `Set-Cookie` notes.
+3. **Send Inform now**. The Simulator feed shows the CPE's view (Client `sim:00D09E-…`), the Proxy feed shows the same session as the proxy saw it (Client `127.0.0.1:<port>`), including the ACS's original response headers (the proxy's cookie-rewrite notes are recorded but not shown yet).
 
 ## Walkthrough 3: test a fault path in your ACS
 
-1. Tick a custom event your ACS should reject (e.g. type `99 BOGUS` in **Custom**, click **+**).
+1. Tick a custom event your ACS should reject (e.g. type `99 BOGUS` in **Custom**, click **+**). Start the CPE if it isn't running.
 2. **Send Inform now**. If the ACS answers with a SOAP Fault, the session ends **⚠ ACS fault** (fault sent with HTTP 200; the note shows `ACS fault <code> <string>`) or **⚠ HTTP error** (fault sent with HTTP 500; the fault is in the Summary and Raw tabs). Either way the CPE goes to `Error` with Retry 1.
-3. Untick the custom event and send again: `RetryCount` in the Inform is `1`. After a completed session, Retry returns to 0.
+3. To go back to normal: **⏹ Stop** and **▶ Start CPE** first. A failed Inform keeps its events pending, so `99 BOGUS` would be sent again whatever the ticks say; restarting gives the CPE an empty pending-event queue and Retry 0. Then untick the custom event and send again.
+4. To see `RetryCount` at work, make the ACS unreachable for one attempt (e.g. point the profile at the proxy and stop the proxy): **Send Inform now** ends **✖ Upstream error** and Retry becomes 1. Start the proxy again and send once more: the Inform carries `RetryCount` `1` (Summary tab), and after the session completes Retry returns to 0.
 
 ## Walkthrough 4: several CPEs in parallel
 

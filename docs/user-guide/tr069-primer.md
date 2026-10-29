@@ -47,7 +47,7 @@ The ACS keeps track of which session a POST belongs to by cookie or by TCP conne
 
 ### How AcsTool shows this
 
-In the feed, a session is one row; in the detail pane's **Messages** tab, it's the list of exchanges above:
+In the feed, a session is one row; in the detail pane's exchanges list, it's the list of exchanges above:
 
 | # | Request | Response |
 |---|---|---|
@@ -56,7 +56,7 @@ In the feed, a session is one row; in the detail pane's **Messages** tab, it's t
 | 3 | `GPVResponse ×2` | `200 SPV ×1` |
 | 4 | `SPVResponse status=0` | `204` |
 
-The row's **Outcome** says how it ended (see [Outcomes](proxy-mode.md#session-outcomes)); **Msgs** counts the exchanges.
+The row's **Outcome** says how it ended (see [Outcomes](proxy-mode.md#session-outcomes)); **Ex** counts the exchanges.
 
 ## Event codes
 
@@ -128,7 +128,7 @@ An error is a SOAP Fault with a CWMP fault code:
 | `9007` | Invalid parameter value |
 | `9008` | Attempt to set a non-writable parameter |
 
-A `SetParameterValues` fault lists one `SetParameterValuesFault` entry per bad parameter. AcsTool shows the code and string in the Summary tab and in the Messages list (e.g. `Fault 9005 Invalid parameter name`).
+A `SetParameterValues` fault lists one `SetParameterValuesFault` entry per bad parameter. AcsTool shows the code and string in the Summary tab and in the detail pane's exchanges list (e.g. `Fault 9005 Invalid parameter name`).
 
 ## Connection requests
 

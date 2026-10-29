@@ -24,7 +24,7 @@ sequenceDiagram
 
 - **Explicit proxy, not transparent.** The CPE must be configured to use the tool's URL as its ACS URL. The tool does not intercept traffic on the network.
 - **Plain HTTP on the CPE side.** The listener only speaks HTTP in this version. The ACS side can be HTTP or HTTPS. (An HTTPS listener is planned; see [roadmap.md](roadmap.md).)
-- **Bytes are relayed, not re-written.** Request and response bodies are forwarded unchanged, byte for byte. Only specific headers are changed, and every change to a response is noted on the exchange.
+- **Bytes are relayed, not re-written.** Request and response bodies are forwarded unchanged, byte for byte. Only specific headers are changed. Each change to a response is recorded as a note on that exchange (not shown in the UI yet; see [roadmap](roadmap.md#planned-fixes-for-known-issues)).
 - **One upstream connection per CWMP session.** Each proxied session gets its own HTTP client with a single connection to the ACS. This keeps Digest nonces and ACS session stickiness working, and keeps cookies of different CPEs apart.
 - **Everything is captured in memory.** Sessions live in an in-memory store bounded by the [Capture settings](settings-reference.md#capture-section). Nothing is written to disk except the log; there is no export yet.
 
@@ -53,7 +53,7 @@ Use an `https://` upstream URL to reach a TLS ACS such as your production ACS. T
 | Mode | Accepts the ACS certificate when... | Notes |
 |---|---|---|
 | **Strict** (default) | Windows trusts the chain **and** the host name matches. | Revocation is **not** checked (it would hang on isolated lab networks). Use this for a public or company-trusted certificate. |
-| **IgnoreErrors** | Always. | For lab use only. A yellow banner *TLS validation disabled for the upstream ACS* stays up while it is in effect. The session's TLS line still shows the real policy errors. |
+| **IgnoreErrors** | Always. | For lab use only. When the upstream URL is `https://`, a yellow banner *TLS validation disabled for the upstream ACS* appears when you start the proxy. You can dismiss it; it comes back on the next Start. The session's TLS line still shows the real policy errors. |
 | **PinnedThumbprint** | The SHA-256 hash of the server's leaf certificate is in your pin list. Chain and name errors are ignored. | The pin list can only be set in `settings.json` (`proxy.tls.pinnedSha256`). **With an empty list, every HTTPS connection fails.** |
 | **CustomCa** | The chain builds up to the CA certificate in your file, **and** the host name matches. | The file path can only be set in `settings.json` (`proxy.tls.customCaPath`). PEM, DER or password-less PFX. Without a path, or with an unreadable file, **Start fails** with a banner. |
 
@@ -122,7 +122,7 @@ How auth shows up in a session:
 
 | What happens | Session result |
 |---|---|
-| ACS answers `401`, CPE retries with credentials, ACS accepts | One session; the `401` exchange carries the note `AuthChallenge`; ends normally |
+| ACS answers `401`, CPE retries with credentials, ACS accepts | One session; exchange 1 shows `401` in the Response column (it also records an `AuthChallenge` note, not shown in the UI yet); ends normally |
 | ACS answers `401` twice in a row to the same kind of message | **🔒 Auth failed** |
 | ACS answers `403` | **🔒 Auth failed** |
 
@@ -134,13 +134,15 @@ Many ACSs use a session cookie to tie the requests of one CWMP session together.
 
 **PassThrough** (default): the CPE's `Cookie` header goes to the ACS as is; the ACS's `Set-Cookie` headers come back to the CPE, rewritten so the CPE will send them back to the proxy:
 
-| Rewrite | When | Setting | Note added to the exchange |
+| Rewrite | When | Setting | Note recorded on the exchange (not shown yet) |
 |---|---|---|---|
 | Remove `Domain=` | Always | **Strip Set-Cookie Domain** (on) | `Set-Cookie Domain stripped` |
 | Remove `Secure` | The CPE leg is HTTP and the upstream is HTTPS | **Strip Set-Cookie Secure when the CPE leg is HTTP** (on) | `Set-Cookie Secure stripped (CPE leg is HTTP)` |
 | `Path=` → `Path=/` | The cookie path does not match the path the CPE posts to (e.g. ACS sets `Path=/tr069`, CPE posts to `/acs`) | always | `Set-Cookie Path /tr069 rewritten to / (CPE posts to /acs)` |
 
-**ManagedPerCpe**: the proxy keeps a cookie jar **per CWMP session** and talks cookies with the ACS itself. The CPE's own `Cookie` header is not forwarded, and `Set-Cookie` is not relayed to the CPE (note: `Set-Cookie consumed by proxy (ManagedPerCpe)`). Use this for CPEs that handle cookies badly. A new session starts with an empty jar.
+These notes are kept on the exchange but are not shown in the UI yet; see [roadmap](roadmap.md#planned-fixes-for-known-issues). The Headers tab shows the ACS's `Set-Cookie` as the ACS sent it, before these rewrites.
+
+**ManagedPerCpe**: the proxy keeps a cookie jar **per CWMP session** and talks cookies with the ACS itself. The CPE's own `Cookie` header is not forwarded, and `Set-Cookie` is not relayed to the CPE (the exchange records the note `Set-Cookie consumed by proxy (ManagedPerCpe)`, not shown in the UI yet). Use this for CPEs that handle cookies badly. A new session starts with an empty jar.
 
 Cookies also help the proxy itself: a request carrying a cookie the ACS set earlier is matched to that session (see [correlation](#how-requests-are-grouped-into-sessions)).
 
@@ -152,7 +154,7 @@ Cookies also help the proxy itself: a request carrying a cookie the ACS set earl
 | `X-Forwarded-For` | Off by default. When **Add X-Forwarded-For** is on, the CPE's IP is appended (an existing value is kept: `prior, cpe-ip`). |
 | Hop-by-hop headers (`Connection`, `Keep-Alive`, `Transfer-Encoding`, `TE`, `Trailer`, `Upgrade`, `Proxy-Authenticate`, `Proxy-Authorization`, `Proxy-Connection`, and any listed in `Connection`) | Never forwarded, either way. |
 | `Content-Length`, `Expect` | Recomputed / not forwarded. An empty POST goes out with `Content-Length: 0`. |
-| `Location` on 3xx | Relayed unchanged, with the note `3xx Location points to … (not rewritten; the CPE may bypass the proxy)`. The proxy does not follow redirects itself. |
+| `Location` on 3xx | Relayed unchanged. The exchange records the note `3xx Location points to … (not rewritten; the CPE may bypass the proxy)`, not shown in the UI yet. The proxy does not follow redirects itself. |
 | `Server` | Kestrel adds no `Server` header of its own. |
 
 **Use the system proxy for upstream** (off by default) makes the upstream connection go through the Windows system proxy settings.
@@ -188,13 +190,13 @@ After each exchange the proxy checks these rules, in this order:
 | Situation | Outcome |
 |---|---|
 | The upstream request failed (no usable response) | **✖ Upstream error** (or **⊘ Canceled** if the proxy was being stopped) |
-| The ACS answered the **Inform** with a SOAP Fault (not on 401/407) | **⚠ ACS fault**, at once. A Fault answering a later message does not end the session. |
+| The ACS answered the **Inform** with a SOAP Fault (not on 401/407) | **⚠ ACS fault**, at once. A Fault answering a later message doesn't end the session by itself; if it comes with a non-2xx status (usually `500`), the session ends as **⚠ HTTP error** by the rule below. |
 | `401` (challenge) | Session continues; a second `401` in a row → **🔒 Auth failed** |
 | `403` | **🔒 Auth failed** |
 | Any other status ≥ 400 | **⚠ HTTP error** |
 | Empty answer (204, or 2xx with empty body) to the CPE's **empty POST** | **✔ Completed** (or **⚠ ACS fault** / **⚠ CPE fault** if a fault was seen earlier in the session) |
 | Empty answer to a CPE *response* after the CPE already sent its empty POST | The session waits for an optional final empty POST. It ends at that POST, or after **2 s** of silence, as Completed / ACS fault / CPE fault. |
-| Empty answer to the **Inform** | **⚠ Protocol error** (note: *ACS answered the Inform with an empty response (InformResponse expected)*) |
+| Empty answer to the **Inform** | **⚠ Protocol error** (the exchange note *ACS answered the Inform with an empty response (InformResponse expected)* is recorded but not shown yet) |
 
 Outside those rules:
 
@@ -225,7 +227,7 @@ A background sweep runs every second, so a session that ends by the 2-second rul
 
 ## Upstream error classes
 
-When forwarding fails, the exchange and the session get a classified error. The **Response** column and the red feed line show its short form.
+When forwarding fails, the exchange and the session get a classified error. The **Response** column and the red feed line show its short form (for `BODYTOOLARGE`, the Response column shows the HTTP status instead; the short form is in the red line).
 
 | Short form (example) | Class | Typical cause | What the CPE receives |
 |---|---|---|---|
@@ -236,7 +238,7 @@ When forwarding fails, the exchange and the session get a classified error. The 
 | `PROTOCOL` | Protocol | Connection reset or closed by the ACS mid-request, invalid HTTP | `502` |
 | `BODYTOOLARGE` | BodyTooLarge | ACS response larger than 10 MiB | `502` |
 | `HTTP 500` | HttpStatus | The ACS answered with an error status (not 401) | The ACS response itself, unchanged |
-| `CANCELED` | Canceled | Proxy stopped during the request | (connection closed) |
+| `CANCELED` | Canceled | Proxy stopped during the request | `502`, or the connection is closed |
 | `UNKNOWN` | Unknown | Anything else; see the message and the log | `502` |
 
 The `502`/`504` answers have an empty body and `Connection: close`. With **Upstream failure = Abort** (Settings), the proxy instead drops the CPE connection without any answer, which mimics a network failure for the CPE.
@@ -296,11 +298,13 @@ The modem keeps talking plain HTTP to the proxy, so you can test HTTPS-ACS behav
 ## Walkthrough 4: Digest auth through the proxy
 
 1. Configure the modem with its ACS username and password. Upstream URL without path, as in walkthrough 1.
-2. Trigger an Inform. Expected exchanges: `Inform …` → `401`, `Inform …` → `200 InformResponse`, then the rest. The first exchange carries the note `AuthChallenge`.
+2. Trigger an Inform. Expected exchanges: `Inform …` → `401`, `Inform …` → `200 InformResponse`, then the rest. (The first exchange also records an `AuthChallenge` note, not shown in the UI yet.)
 3. On the **Headers** tab of exchange 2, `Authorization` shows `Digest username="…" <redacted>`; tick **Reveal Authorization** to compare the `uri` with the path the ACS received.
 4. **🔒 Auth failed** after two `401`s means the ACS rejected the credentials. If the same credentials work without the proxy, check the [path rules](#paths-and-the-acs-url).
 
 ## Walkthrough 5: an ACS that relies on cookies
 
-1. With **Cookies = PassThrough**, run a session and look at the notes on the InformResponse exchange, e.g. `Set-Cookie Domain stripped`. On the next exchange, the request headers should contain the cookie.
-2. If the modem doesn't send the cookie back (the ACS then sees each POST as a new session), stop the proxy, switch **Cookies** to **ManagedPerCpe** and start again. The proxy now holds the cookie for the modem; the notes say `Set-Cookie consumed by proxy (ManagedPerCpe)`.
+1. With **Cookies = PassThrough**, run a session. On the **Headers** tab of the InformResponse exchange, the response headers show the ACS's `Set-Cookie` as the ACS sent it (before the proxy's Domain/Secure/Path rewrites). On the next exchange, the request headers should contain the cookie: the CPE sent it back.
+2. If the modem doesn't send the cookie back (the ACS then sees each POST as a new session), stop the proxy, switch **Cookies** to **ManagedPerCpe** and start again. The proxy now holds the cookie for the modem: the CPE's request headers carry no cookie, yet the ACS keeps the session together.
+
+The rewrite notes (`Set-Cookie Domain stripped`, `Set-Cookie consumed by proxy (ManagedPerCpe)`, …) are recorded per exchange but are not shown in the UI yet.

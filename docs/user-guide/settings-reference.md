@@ -107,7 +107,7 @@ The **Where to edit** column below says where each setting can be changed: **Tab
 | `stripCookieSecureOnHttp` | bool | `true` | Window | Remove `Secure` from `Set-Cookie` when the CPE side is HTTP and the ACS is HTTPS. |
 | `addXForwardedFor` | bool | `false` | Window | Append the CPE IP to `X-Forwarded-For`. |
 | `failureMode` | `StatusCode` \| `Abort` | `StatusCode` | Window | On upstream failure: answer the CPE `502`/`504` (StatusCode), or drop the CPE connection (Abort). |
-| `connectTimeoutSeconds` | int | `10` | Window | TCP connect timeout to the ACS, per address (1–300 in the window). Exceeding it gives `CONNECT … timed out`. |
+| `connectTimeoutSeconds` | int | `10` | Window | TCP connect timeout to the ACS, total across all resolved addresses (1–300 in the window). Exceeding it gives `CONNECT … timed out`. |
 | `requestTimeoutSeconds` | int | `30` | Window | Whole-request timeout to the ACS, including connect (1–3600). Exceeding it gives `TIMEOUT <phase>` and `504`. |
 | `sessionIdleTimeoutSeconds` | int | `30` | Window | A proxied session with no traffic for this long ends as Abandoned (1–3600). |
 | `tls` | object or null | `null` (= Strict) | Tab (mode only), File | Upstream TLS options; see [`proxy.tls`](#proxytls-object). |
@@ -117,7 +117,7 @@ The **Where to edit** column below says where each setting can be changed: **Tab
 
 ### `proxy.tls` object
 
-Also used, with the same shape, as `tls` in a profile file (where it is not editable and only its `mode` default `Strict` matters).
+Also used, with the same shape, as `tls` in a profile file. There it is not editable in the window, but a hand-edited value is used by the simulated CPE.
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
@@ -178,7 +178,7 @@ The capture settings bound how much the in-memory session store keeps. The store
 - `proxy.tls` becomes `null`: TLS mode Strict, and your pins and custom CA path are **gone**;
 - `proxy.maxRequestBodyBytes` goes back to 10 MiB.
 
-The `simulator`, `ui` and `logging` sections are kept. If you use hand-edited TLS settings, back up `settings.json` first.
+The `simulator`, `ui` and `logging` sections are kept. If you use hand-edited TLS settings, back up `settings.json` first. This is a [known issue](troubleshooting.md#known-issues-fixes-planned); a fix to keep `tls` and `maxRequestBodyBytes` is planned.
 
 ## Corrupt or missing settings file
 
@@ -215,7 +215,7 @@ Passwords are not written to the log. Captured `Authorization` headers are maske
 | `defaultEvents` ✎ | array | `[{"eventCode":"1 BOOT","commandKey":""}]` | Ticked events. |
 | `requestTimeoutSeconds` ✎ | int | `30` | Per-request timeout (1–600). |
 | `rpcBehaviors` | map | `{}` | Per-RPC overrides: `kind` `Auto`/`Fault`/`NoResponse`, `faultCode` (9000–9899), `delaySeconds`. See [simulator-mode.md](simulator-mode.md#advanced-per-rpc-behavior-overrides-profile-json). |
-| `tls` | object | `mode` `Strict` | Same shape as `proxy.tls`; only Strict behavior is reachable from the UI. |
+| `tls` | object | `mode` `Strict` | Same shape as `proxy.tls`. Not editable in the window; a hand-edited value is used. |
 | `maxEnvelopes` | uint | `1` | Inform `MaxEnvelopes` value. |
 | `periodic` | object | `enabled` false, `intervalSeconds` 300, `phaseTime` null, `jitterPercent` 0 | **Not used yet** (no periodic Informs). |
 | `retry` | object | `minimumWaitSeconds` 5, `intervalMultiplier` 2000, `maxRetries` null | **Not used yet** (no automatic retry). |

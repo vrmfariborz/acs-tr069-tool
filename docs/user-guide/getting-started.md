@@ -69,7 +69,7 @@ Other ways to start it:
 | Command | Use |
 |---|---|
 | `dotnet run --project src\AcsTool.App -c Release` | Run from source without publishing (needs the SDK). |
-| `Start-Process .\out\win-x64\AcsTool.exe -ArgumentList '--smoke-exit' -Wait -PassThru \| % ExitCode` | Smoke test: starts the app without showing the window, loads settings and profiles, shuts down cleanly and exits. `0` means OK, `1` means startup failed. CI uses this. |
+| `Start-Process .\out\win-x64\AcsTool.exe -ArgumentList '--smoke-exit' -Wait -PassThru \| % ExitCode` | Smoke test: starts the app without showing the window, loads settings and profiles, shuts down cleanly and exits. `0` means OK, `1` means startup failed. Like every normal exit, it also writes `settings.json`. CI uses this. |
 
 `--smoke-exit` is the only command-line option the app understands.
 

@@ -118,7 +118,7 @@ Three rows: the profile area (top), a splitter, and the lower pane with **Runnin
 
 | Control | What it does |
 |---|---|
-| **Profiles** list | All saved profiles, sorted by name. A leading **●** marks unsaved changes. Selecting a profile opens it in the editor. Unsaved edits stay in memory while you switch profiles, until the app closes. |
+| **Profiles** list | All saved profiles, sorted by name when loaded (new profiles are added at the end). A leading **●** marks unsaved changes. Selecting a profile opens it in the editor. Unsaved edits stay in memory while you switch profiles, until the app closes. |
 | **+ From TR-098** | New profile from the TR-098 (`InternetGatewayDevice.`) template, named *New TR-098 profile*, serial `SIM098001` (or the next free number). Not saved until you click **Save**. |
 | **+ From TR-181** | Same with the TR-181 (`Device.`) template, serial `SIM181001`, product class `Device2`. |
 
@@ -194,7 +194,7 @@ Header: `Running CPEs  N running · N in session · N error`. The grid (max 140 
 | Column | Meaning |
 |---|---|
 | **Device** | Device key `OUI-Serial`, e.g. `00D09E-SIM098001` |
-| **State** | `Idle` (waiting), `InSession`, `Error` (last session failed), `Stopped` |
+| **State** | `Idle` (waiting), `InSession`, `Error` (last session failed), `Stopped`. A row is removed from the list when its CPE is stopped, so `Stopped` is rarely seen. |
 | **Retry** | Failed sessions in a row. Sent as the Inform `RetryCount`; reset to 0 after a completed session. |
 | **Last outcome** | Outcome badge of the last session, e.g. `✔ Completed` |
 | **Sessions** | Sessions run since the CPE started |
@@ -235,7 +235,7 @@ New sessions appear at the top. The feed keeps at most **Feed max items** sessio
 | **Outcome** | Badge, see the table below |
 | **Duration** | Total session time in ms (empty while in progress) |
 
-When a session has an error, a red line under the row shows it, e.g. `CONNECT ConnectionRefused: Connection refused`. Row backgrounds: green for Completed, pale blue for In progress, red for Upstream error and Auth failed, amber for ACS fault, CPE fault, HTTP error and Protocol error, white otherwise.
+When a session has an error, a red line under the row shows it: the last classified error, e.g. `CONNECT ConnectionRefused: Connection refused`, or, for an error outcome without one, the session's last note. Row backgrounds: green for Completed, pale blue for In progress, red for Upstream error and Auth failed, amber for ACS fault, CPE fault, HTTP error and Protocol error, white otherwise.
 
 | Badge | Outcome |
 |---|---|
@@ -263,7 +263,7 @@ Shows *Select a session* until you click a feed row.
 - **Events:** full event codes with CommandKeys, e.g. `1 BOOT; M Reboot (rb1)` · CWMP version (`cwmp-1-0`, or `unknown`) · `→` target URL
 - TLS line, only for HTTPS upstream sessions in the Proxy tab: `<certificate subject> · issuer <issuer> · <policy errors>` (e.g. `None`, `RemoteCertificateChainErrors`)
 - Error line in red: the last classified error
-- Notes as bullets, e.g. `• ACS answered the Inform with a SOAP Fault`, `• ambiguous correlation by IP`
+- Session notes as bullets, e.g. `• ambiguous correlation by IP`, `• CPE disconnected before response relayed` (proxy) or `• ACS fault 8005 Retry request` (simulator). Notes recorded on single exchanges (auth challenges, cookie rewrites, 3xx Location) are not shown yet; see [roadmap](roadmap.md#planned-fixes-for-known-issues).
 
 ### Exchanges grid
 
@@ -284,7 +284,7 @@ Two name/value lists, **Request** and **Response**, with the parsed fields of ea
 - **Request headers** and **Response headers** grids (Name, Value). For proxy sessions these are the headers the CPE sent and the headers the ACS returned, before the proxy's rewriting.
 
 ### Raw tab
-- **Pretty**: formats the XML (indentation). Formatting runs in the background; invalid XML or text over 2 million characters is shown unchanged.
+- **Pretty**: formats the XML (indentation). The setting is per exchange: each exchange starts unformatted. Formatting runs in the background; invalid XML or text over 2 million characters is shown unchanged.
 - **Copy request** / **Copy response**: copy the raw body to the clipboard.
 - Two read-only monospace boxes: request body (top) and response body (bottom), with a splitter. Only bodies are shown; headers are on the Headers tab.
 - A yellow strip like `Captured 1 MiB of 3.2 MiB` appears when a body was larger than **Max captured body** and was truncated in memory (the full body was still forwarded).
