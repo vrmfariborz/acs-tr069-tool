@@ -14,7 +14,7 @@ public class SessionStoreTests
     private static HttpMessageCapture Cap(int bytes) =>
         HttpMessageCapture.From("POST", "/acs", null, [], new byte[bytes], int.MaxValue);
 
-    private static List<SessionChange> Drain(ISessionStore s)
+    private static List<SessionChange> Drain(InMemorySessionStore s)
     {
         var list = new List<SessionChange>();
         while (s.Changes.TryRead(out var c))
