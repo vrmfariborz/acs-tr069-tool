@@ -7,18 +7,18 @@
       <StackPanel>
         <WrapPanel IsEnabled="{Binding CanEdit}" ToolTip="Changes apply on the next Start">
           <Label Content="Listen" />
-          <ComboBox Width="130" IsEditable="True" ItemsSource="{Binding BindAddressChoices}"
+          <ComboBox MinWidth="130" IsEditable="True" ItemsSource="{Binding BindAddressChoices}"
                     Text="{Binding BindAddress, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
           <Label Content="Port" />
-          <TextBox Width="60" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+          <TextBox MinWidth="60" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
           <Label Content="→ Upstream" />
-          <TextBox Width="360" Text="{Binding UpstreamUrl, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
+          <TextBox MinWidth="260" Text="{Binding UpstreamUrl, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True}" />
           <Label Content="TLS" />
-          <ComboBox Width="110" ItemsSource="{Binding TlsModes}" SelectedItem="{Binding TlsMode}" />
+          <ComboBox MinWidth="110" ItemsSource="{Binding TlsModes}" SelectedItem="{Binding TlsMode}" />
           <Label Content="Cookies" />
-          <ComboBox Width="120" ItemsSource="{Binding CookieModes}" SelectedItem="{Binding CookieMode}" />
+          <ComboBox MinWidth="120" ItemsSource="{Binding CookieModes}" SelectedItem="{Binding CookieMode}" />
         </WrapPanel>
-        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+        <WrapPanel Margin="0,4,0,0">
           <Button Content="{Binding StartStopText}" Command="{Binding StartStopCommand}" FontWeight="SemiBold" MinWidth="90" ToolTip="F5" />
           <TextBlock Text="{Binding StateText}" VerticalAlignment="Center" Margin="8,0" />
           <ItemsControl ItemsSource="{Binding BoundUrls}" VerticalAlignment="Center">
@@ -33,7 +33,7 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-        </StackPanel>
+        </WrapPanel>
       </StackPanel>
     </Border>
     <Grid>

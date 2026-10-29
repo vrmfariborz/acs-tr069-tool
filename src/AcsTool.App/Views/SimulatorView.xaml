@@ -5,15 +5,15 @@
              xmlns:sim="clr-namespace:AcsTool.Presentation.Simulator;assembly=AcsTool.Presentation">
   <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="3*" MinHeight="200" />
+      <RowDefinition Height="3*" MinHeight="360" />
       <RowDefinition Height="5" />
       <RowDefinition Height="Auto" />
-      <RowDefinition Height="2*" MinHeight="120" />
+      <RowDefinition Height="2*" MinHeight="160" />
     </Grid.RowDefinitions>
     <Grid>
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="220" />
-        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="1*" MinWidth="170" MaxWidth="320" />
+        <ColumnDefinition Width="4*" MinWidth="560" />
       </Grid.ColumnDefinitions>
       <DockPanel Margin="4">
         <TextBlock DockPanel.Dock="Top" Text="Profiles" FontWeight="SemiBold" />
@@ -23,18 +23,20 @@
         </StackPanel>
         <ListBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="DisplayName" />
       </DockPanel>
-      <DockPanel Grid.Column="1" DataContext="{Binding SelectedProfile}"
-                 Visibility="{Binding Converter={StaticResource NullToVisibility}}">
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4">
+      <!-- The profile editor scrolls on its own when its row is shorter than the editor (parameters grid keeps >= 140 px). -->
+      <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                    DataContext="{Binding SelectedProfile}" Visibility="{Binding Converter={StaticResource NullToVisibility}}">
+      <DockPanel MinHeight="520" Height="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
+        <WrapPanel DockPanel.Dock="Top" Margin="4">
           <Label Content="Profile" />
-          <TextBox Width="220" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+          <TextBox MinWidth="220" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
           <Button Content="Save" Command="{Binding DataContext.SaveCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
           <Button Content="Delete" Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
           <Button Content="▶ Start CPE" Command="{Binding DataContext.StartCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
           <Button Content="⏹ Stop" Command="{Binding DataContext.StopCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
           <Button Content="✉ Send Inform now" FontWeight="SemiBold" Command="{Binding DataContext.SendInformNowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
           <Button Content="■ Stop all" Command="{Binding DataContext.StopAllCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
-        </StackPanel>
+        </WrapPanel>
         <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding Errors}" Margin="8,0">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
@@ -47,9 +49,9 @@
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="*" MinWidth="140" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="*" MinWidth="140" />
               </Grid.ColumnDefinitions>
               <Grid.RowDefinitions>
                 <RowDefinition />
@@ -69,9 +71,9 @@
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="*" MinWidth="140" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="*" MinWidth="140" />
               </Grid.ColumnDefinitions>
               <Grid.RowDefinitions>
                 <RowDefinition />
@@ -99,7 +101,7 @@
           <DockPanel>
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal">
               <Label Content="Custom" />
-              <TextBox Width="220" Text="{Binding CustomEvent, UpdateSourceTrigger=PropertyChanged}" />
+              <TextBox MinWidth="220" Text="{Binding CustomEvent, UpdateSourceTrigger=PropertyChanged}" />
               <Button Content="+" Command="{Binding AddCustomEventCommand}" MinWidth="30" />
             </StackPanel>
             <ItemsControl ItemsSource="{Binding Events}">
@@ -126,7 +128,7 @@
               <Button Content="+ Add" Command="{Binding AddParameterCommand}" />
               <Button Content="Reset to defaults" Command="{Binding ResetParametersCommand}" />
             </StackPanel>
-            <DataGrid ItemsSource="{Binding Parameters}" IsReadOnly="False" CanUserDeleteRows="False">
+            <DataGrid ItemsSource="{Binding Parameters}" IsReadOnly="False" CanUserDeleteRows="False" MinHeight="140">
               <DataGrid.Columns>
                 <DataGridTextColumn Header="Name" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="3*" />
                 <DataGridComboBoxColumn Header="Type" ItemsSource="{x:Static sim:ParameterRowViewModel.Types}" SelectedItemBinding="{Binding Type}" Width="110" />
@@ -140,6 +142,7 @@
           </DockPanel>
         </GroupBox>
       </DockPanel>
+      </ScrollViewer>
     </Grid>
     <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" />
     <DockPanel Grid.Row="2" Margin="4,2">
