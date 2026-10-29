@@ -361,7 +361,7 @@ public class TesterExploratoryTests
 
     // ---- defects (expected behavior; skipped) ---------------------------------------------------------------------------------
 
-    [Fact(Skip = "BUG-01: ACS SOAP Fault to Inform leaves the proxy session InProgress until the idle sweep (Abandoned) instead of ending AcsFault")]
+    [Fact(Skip = "BUG-01 (still open on fix/review-m0-m4 dfae3b3): ACS SOAP Fault to Inform leaves the proxy session InProgress until the idle sweep (Abandoned) instead of ending AcsFault")]
     public async Task AcsFaultToInform_Bug01_SessionEndsAcsFaultPromptly()
     {
         await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s.ExpectInform()
@@ -393,7 +393,7 @@ public class TesterExploratoryTests
         Assert.Equal(SessionOutcome.Abandoned, h.Store.GetAll().Single().Outcome); // the ACS fault is lost from the outcome
     }
 
-    [Fact(Skip = "BUG-02: a new Inform within the 2 s completion grace marks the previous, already-finished session Superseded instead of Completed")]
+    [Fact]
     public async Task NewInformDuringCompletionGrace_Bug02_PreviousSessionCompleted()
     {
         await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s
@@ -413,26 +413,5 @@ public class TesterExploratoryTests
         await OneSession(client);           // user clicks "Send Inform now" again within 2 s
         var first = h.Store.GetAll().OrderBy(s => s.Started).First();
         Assert.Equal(SessionOutcome.Completed, first.Outcome);
-    }
-
-    [Fact]
-    public async Task NewInformDuringCompletionGrace_ActualBehavior_PreviousSessionSuperseded()
-    {
-        // Characterization of BUG-02.
-        await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s
-            .ExpectInform().RespondInformResponse()
-            .ExpectEmpty().Send(new GetParameterValuesMessage(["InternetGatewayDevice.DeviceInfo."]))
-            .ExpectResponse<GetParameterValuesResponseMessage>().End204());
-        await using var h = await ProxyHarness.StartAsync(acs);
-        using var client = ProxyHarness.CpeClient();
-        for (var i = 0; i < 2; i++)
-        {
-            (await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform("GRACE2")))).Dispose();
-            using var r2 = await client.SendAsync(ProxyHarness.Post(h.Url(), null));
-            var id = ProxyHarness.IdOf(await r2.Content.ReadAsByteArrayAsync());
-            (await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Soap(new GetParameterValuesResponseMessage([]), id)))).Dispose();
-        }
-        var first = h.Store.GetAll().OrderBy(s => s.Started).First();
-        Assert.Equal(SessionOutcome.Superseded, first.Outcome);
     }
 }

@@ -180,3 +180,97 @@ Fix BUG-01 before or at the start of M5, and BUG-02/BUG-03 when convenient. When
 - `tests/AcsTool.Proxy.Tests/TesterExploratoryTests.cs`: 22 tests (20 active, 2 skipped bug repros).
 - `tests/AcsTool.Simulator.Tests/TesterScenarioTests.cs`: 2 tests (scenario #11 integration, direct and via the proxy).
 - `docs/TEST_REPORT_M0-M4.md`: this report.
+
+---
+
+## 10. Fix branch dfae3b3 (`fix/review-m0-m4`)
+
+Re-verification date: 2026-10-29 · Tested commit: **`dfae3b3`** + TesterBot tests/docs (cherry-picked from `6a8c873`, no `src/` change),
+on branch `tester/m0-m4-fix`, in a separate worktree (`/workspace/projects/acs-tr069-tool-fixtest`), ephemeral ports, no processes left running.
+The fix branch contains 15 commits on top of `b67eb19`: review fixes M1–M6, m1, m5, m6, m8, m10–m14 (m12 partly), the user-reported
+clipped-tab layout fix (`c8c0861`), and docs (`dfae3b3`).
+
+### 10.1 Results (actual output, clean `bin/obj`)
+
+| Command | Presentation | Core | Simulator | Proxy | Total (passed/failed/skipped) | Warn/Err | Wall |
+|---|---|---|---|---|---|---|---|
+| `dotnet build AcsTool.sln -c Release` | | | | | success | 0 / 0 | 5 s (4.75 s MSBuild) |
+| `dotnet test AcsTool.sln -c Release --no-build` | 45/0/0 | 309/0/0 | 65/0/0 | 92/0/1 | **511 / 0 / 1 (512)** | — | 9 s |
+| `CI=true ./build.sh` (clean tree, coverage) | 45/0/0 | 308/0/0 | 65/0/0 | 92/0/1 | **510 / 0 / 1 (511)**, exit 0 | 0 / 0 | 15 s |
+
+- The only skip is `TesterExploratoryTests.AcsFaultToInform_Bug01_SessionEndsAcsFaultPromptly` (BUG-01 is still open).
+- TesterBot tests included: 21 in `TesterExploratoryTests.cs`, 2 in `TesterScenarioTests.cs`, and 5 new cases in `TesterFixBranchTests.cs` (4 methods, one is a 2-case theory).
+- Changes to the TesterBot tests for this branch:
+  - The BUG-02 repro `NewInformDuringCompletionGrace_Bug02_PreviousSessionCompleted` is un-skipped and **passes**.
+  - Its characterization test `…_ActualBehavior_PreviousSessionSuperseded` failed as expected (`Expected: Superseded, Actual: Completed`) and was removed.
+  - When un-skipped, the BUG-01 repro **still fails** (`still InProgress after 5 s`), so it stays skipped with an updated reason.
+- Line coverage: Core 87.0%, Proxy 89.6%, Simulator 89.7%, Presentation 85.3% (NFR-09 is met).
+
+### 10.2 Bug status
+
+| ID | Title | Severity | Status on dfae3b3 | Evidence |
+|---|---|---|---|---|
+| BUG-01 | ACS SOAP Fault in answer to an Inform → proxy session `Abandoned` after the idle timeout instead of `AcsFault` | Medium | **OPEN** | No change in `EvaluateEnd`/`Sweep` for this case. The repro test fails; `AcsFaultToInform_ActualBehavior_OpenPastGrace_ThenAbandonedNotAcsFault` still passes. It is not in the review or the fix commits. |
+| BUG-02 | A new Inform during the 2 s completion grace marks the finished session `Superseded` | Low | **FIXED** (`d51bb45`, review M3) | `CpeSessionTracker.Resolve` now ends an `AwaitingFinalEmpty` session with `FinalOutcome(old)`. The repro passes. Guards added: a session that is genuinely mid-session is still `Superseded` (✔), and grace after a CPE Fault → `CpeFault` (✔). |
+| BUG-03 | `NetTests.Dns_NonexistentInvalidTld_Dns` reports Passed while doing nothing when DNS is hijacked | Low (test quality) | **OPEN** | `NetTests.cs` still does a bare `return` (now around L161). Scenario #3 is still only partly verified on Linux (DNS sinkhole). |
+
+### 10.3 Exploratory checks on the fixed findings
+
+| Fix | Probe (independent of CoderBot's tests) | Result |
+|---|---|---|
+| M3 / BUG-02 | Two quick sessions without a trailing empty POST; mid-session supersede guard; grace after a CPE Fault | ✔ `Completed`; `Superseded`; `CpeFault` |
+| m1 | Proxy stopped while the 2nd exchange (empty POST) is waiting on a 10 s upstream delay | ✔ Session `Canceled`; the 1st exchange keeps no error |
+| m13 | Upstream Set-Cookie `Path=/` and `Path=/acs` with the CPE posting to `/acs` (negative case for the rewrite) | ✔ Relayed unchanged, no Path note (CoderBot's `SetCookiePath_ForUpstreamBasePath_RewrittenSoCpeReplaysIt` covers the positive case) |
+| m10, m11, m12, m5, m6, m8, M1, M2, M4–M6 | Reviewed the commit diffs and the matching new tests (`UpstreamUrlWithCredentials_NotForwarded_RedactedInSessionTarget`, `ProxyStoppedDuringInFlightExchange_SessionCanceled`, `Start_Localhost_BindsLoopback`, `Start_UnexpectedFailure_FaultedAndCleanedUp_ThenRestartable`, `Start_CustomCaFileMissing_ProxyStartExceptionWithClearMessage`, feed-pump and view-model tests) | All pass in the runs above. No extra probes (out of scope for this lean pass) |
+
+### 10.4 Tab layout: static review of `c8c0861` (rendering can't be done on Linux)
+
+What changed:
+- `MainWindow`: MinWidth 1100→640, MinHeight 700→480, `ResizeMode=CanResize`. Each `TabItem` hosts a `ScrollViewer` (both bars on Auto). The view's `Width`/`Height` are bound to the ScrollViewer's `ViewportWidth`/`ViewportHeight`, with MinWidth/MinHeight (Proxy 760×420, Simulator 900×760).
+- `SettingsWindow`: resizable (min 420×320); both tabs scroll vertically (horizontal scrolling disabled).
+- `SimulatorView`: the profile editor has its own vertical ScrollViewer (DockPanel MinHeight 520). Fixed pixel widths became `*` + MinWidth. Toolbars changed from `StackPanel` to `WrapPanel`.
+- `ProxyView`: fixed widths → MinWidth; the button row is a `WrapPanel`.
+- `XamlLayoutTests` (3 tests, all pass) lint these properties.
+
+Assessment:
+- The viewport-binding pattern is a sound way to get "fill when large, scroll when small" while keeping star rows and DataGrid virtualization. The lint tests confirm the structure but not the rendered result.
+- **NEW-01 (Low, needs manual confirmation): the Simulator tab probably needs vertical scrolling at the default window size.**
+  - Cause: the Simulator view has `MinHeight="760"`. With a default window `Height="820"`, the tab viewport is roughly 690 px at 100% DPI (820 minus title bar/border ≈ 39, header row ≈ 34, status bar ≈ 23, tab strip and margins ≈ 34; my estimate, not measured).
+  - Effect: a vertical scrollbar at startup, and the bottom of the session feed/detail is cut off until the user scrolls. On a 1366×768 laptop or at 150% DPI it gets clearly worse.
+  - Repro: on Windows, start the app at its default size and open the Simulator tab.
+  - Expected: no scrollbar at the default size. Actual (predicted): a vertical scrollbar.
+  - Location: `src/AcsTool.App/Views/MainWindow.xaml` (SimulatorView MinHeight 760) vs the Window Height 820.
+  - Suggested fix (for CoderBot): lower MinHeight to about 600, or raise the default window height.
+- **NEW-02 (Low, pre-existing, needs manual confirmation): the Simulator tab's horizontal `GridSplitter` (row 1) sits between the editor row (`3*`) and the `Auto` "Running CPEs" row (row 2), not the feed row (row 3).**
+  - Effect: dragging it resizes the editor against the running-CPE strip (whose DataGrid has `MaxHeight` 140) and turns the Auto row into a fixed pixel height. The feed/detail area cannot be enlarged with the splitter.
+  - Location: `src/AcsTool.App/Views/SimulatorView.xaml` (row definitions and the GridSplitter at `Grid.Row="1"`).
+  - Expected: the splitter trades space between the editor and the feed/detail.
+- Points to confirm by hand: whether the mouse wheel over a DataGrid scrolls the grid (expected) and the page when the grid reaches its end; no scrollbar flicker when resizing near the MinWidth/MinHeight thresholds (the viewport-binding feedback loop); a 2-scrollbar nesting on the Simulator tab (outer page + inner editor) that might confuse users.
+
+### 10.5 Updated Windows UI checklist (adds to §7; run W-1…W-14 first)
+
+Changes from §7:
+- **W-5**: clicking "Send Inform now" twice within 2 s should now give `Completed` for both sessions (BUG-02 fixed).
+- **W-12** still shows BUG-01 (`Abandoned` after about 30 s).
+
+| ID | Step | Expected |
+|---|---|---|
+| W-15 | Start at the default size (1280×820) at 100% DPI; open each tab | Proxy tab: no scrollbars. Simulator tab: note whether a vertical scrollbar appears (NEW-01) and how much is hidden |
+| W-16 | Resize the main window slowly down to its minimum (640×480), then maximize | Content is never clipped without a scrollbar. Scrollbars appear only below the view minimum (Proxy 760×420, Simulator 900×760) and disappear when larger. No flicker or jitter near the thresholds. Feed and detail grids grow with the window when maximized |
+| W-17 | At a small size: scroll each tab with the scrollbars and the mouse wheel (over empty space, over the feed DataGrid, over the parameters grid) | Every control can be reached, including the Start button, "Send Inform now", the Raw/Pretty tab and the status bar. The wheel scrolls the grid under the cursor; the page scrolls elsewhere |
+| W-18 | Simulator tab: select a profile in a short window | The profile editor scrolls on its own; the parameters grid keeps at least about 140 px; toolbar buttons wrap instead of being cut off |
+| W-19 | Simulator tab: drag the horizontal splitter under the editor | Note which areas resize (NEW-02: expected editor ↔ feed; predicted editor ↔ Running CPEs strip) |
+| W-20 | Proxy tab at a narrow width (about 800 px) | The listen/port/upstream/TLS/cookies fields and the Start/bound-URL row wrap onto further lines; nothing overlaps |
+| W-21 | Settings window: resize down to 420×320 and back; check both pages | Vertical scrolling works; labels are not cut off; OK/Cancel stay visible |
+| W-22 | Repeat W-15…W-17 at 150% DPI (or on a 1366×768 display) | The window fits the work area or can be resized to fit; tabs scroll instead of clipping |
+
+### 10.6 Verdict for the fix branch
+
+**APPROVE MERGE of `fix/review-m0-m4` (dfae3b3).** There are no blockers:
+- the build and all tests are green in Release and under `CI=true` with 0 warnings;
+- the review fixes I probed behave correctly;
+- BUG-02 is fixed;
+- there are no Critical or High findings.
+
+Still open, but not blocking: BUG-01 (Medium; fix it before or at the start of M5), BUG-03 (Low), NEW-01 and NEW-02 (Low; UI, need confirmation on Windows).
+M4 acceptance remains **conditional** on the Windows manual checklist (W-1…W-22). The tab layout fix in particular has only been linted, never rendered.
