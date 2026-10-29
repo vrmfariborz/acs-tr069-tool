@@ -80,6 +80,32 @@ public class DetailTests
     }
 
     [Fact]
+    public void ExchangeNotes_ExposedOnTheExchangeItem_AndRefreshed()
+    {
+        // Doc review finding (g): per-exchange proxy notes were stored but never shown.
+        var id = Kit.StartSession(_store, "NOTE");
+        var body = Fixtures.Load("inform-boot-cwmp10.xml");
+        var seq = _store.AddExchange(id, HttpMessageCapture.From("POST", "/acs", null, [], body, 1024 * 1024), Kit.Summary(body), DateTimeOffset.UtcNow);
+        var vm = new SessionDetailViewModel(new CountingFormatter(), new FakeClipboard());
+        vm.Load(_store.Get(id)!);
+        var ex = vm.SelectedExchange!;
+        Assert.False(ex.HasNotes);
+        Assert.Empty(ex.Notes);
+
+        var changed = new List<string?>();
+        ex.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        var respBody = Fixtures.Load("informresponse-cwmp10.xml");
+        _store.CompleteExchange(id, seq, HttpMessageCapture.From(null, "http://acs/acs", 500, [], respBody, 1024 * 1024), Kit.Summary(respBody), null,
+            new ExchangeTimings(DateTimeOffset.UtcNow), ["Upstream path rewritten to /acs", "Set-Cookie Domain stripped"]);
+        vm.Refresh(_store.Get(id)!);
+
+        Assert.Same(ex, vm.SelectedExchange);
+        Assert.True(ex.HasNotes);
+        Assert.Equal(["Upstream path rewritten to /acs", "Set-Cookie Domain stripped"], ex.Notes);
+        Assert.True(changed.Contains(string.Empty) || (changed.Contains(nameof(ExchangeItemViewModel.Notes)) && changed.Contains(nameof(ExchangeItemViewModel.HasNotes))));
+    }
+
+    [Fact]
     public void TruncatedBody_ShowsBanner()
     {
         var big = Encoding.UTF8.GetBytes("<x>" + new string('a', 3 * 1024 * 1024) + "</x>");
