@@ -97,3 +97,7 @@ Follow-up after the re-review and TesterBot's re-verification (fast-forwarded to
 - **R2-n1:** The Fault-to-Inform rule (BUG-01) does not apply to HTTP 401 or 407. A 401 still goes through the auth challenge and retry logic. A 407 keeps its existing HttpError handling.
 - **R2-n4:** The nested DockPanels in `SimulatorView.xaml` were reindented. This is whitespace only.
 - **CI and `ACSTOOL_SKIP_NET_TIMEOUT`:** Nothing in CI sets the variable (checked `.github/workflows`, `build.sh` and `build.ps1`; there are no runsettings files). There are now guards against it being set: the Linux CI job has a step that fails if it is set, and `build.sh` / `build.ps1` exit with an error when `CI=true` and the variable is set.
+
+Deferred after the final review (re-review 3, @ 1b8fe03):
+- **R3-n1:** The Windows CI job never runs `build.ps1` or the tests. It only builds, publishes and runs `--smoke-exit`. The suggested fix is to add a `./build.ps1 -NoCoverage` step to the Windows job.
+- **Still deferred from earlier rounds:** R2-n2 (an empty POST after a Fault becomes an orphan session; to be folded into the m2 fix), R2-n3 (Settings opened from code-behind), and R-n1–R-n6, along with m2, m3, m4, m7, m15, part of m12, and n1–n8.

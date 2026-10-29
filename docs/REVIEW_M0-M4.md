@@ -369,3 +369,62 @@ No regressions found elsewhere in the range. The docs (`IMPLEMENTATION_NOTES.md`
 #### Required before merge
 
 1. Fix R2-M1 and add a Windows smoke step for typing a password into a profile that has none. After that I approve the merge, with no further re-review needed beyond confirming the diff, as long as nothing else changes.
+
+### Re-review 3 (@ 1b8fe03), final verdict
+
+**Reviewer:** ReviewerBot · **Date:** 2026-10-29 · **Range:** `8794603..1b8fe03` (c701d7d, 1769869, eca1311, 9a285d8, 1b8fe03).
+This was a review only. I built and tested in a private clone at `/tmp/rr3-acs`; no servers were started beyond the test suite's ephemeral ports.
+
+#### Final verdict: **Approve merge**
+
+Nothing blocks the merge. R2-M1 is fixed, R2-n1 and R2-n4 are done, and the CI guard is valid. The items left for MVP sign-off are listed below; none of them blocks this merge.
+
+#### Status of each item
+
+| Item | Status | Evidence |
+|---|---|---|
+| c701d7d (Re-review 2 doc) | **Matches** | It adds 44 lines with no deletions to `docs/REVIEW_M0-M4.md` only, and the text is what I wrote. One off-by-one of mine is carried over: the R2-M1 row says `PasswordBoxAssistant.cs:33-36` where it should say `:32-36`. Immaterial, and the file has since been rewritten. |
+| R2-M1 PasswordBox (1769869) | **Fixed** | **The XAML sets Attach="True":** `SimulatorView.xaml:88-90` has `v:PasswordBoxAssistant.Attach="True"` plus `BoundPassword="{Binding Password, Mode=TwoWay, …}"`, and the lint test now asserts `Attach="True"`. **Attach and detach:** `OnAttachChanged` (`PasswordBoxAssistant.cs`) runs `-=` and then `+=` when the value is true, so it can't subscribe twice, and setting it to false detaches. The handler is a static method stored only on the box's own event, and the `PasswordSync` state lives in a per-box attached DP. Nothing static holds the box, so there's **no leak**. The subscription isn't tied to Loaded/Unloaded. That's correct here: a tab switch unloads and reloads the *same* PasswordBox instance, the subscription survives, and `Attach` doesn't change, so it isn't resubscribed. A recreated box gets its own subscription. **Typing into an empty-password profile** no longer depends on any value push, so it reaches the VM (`PasswordSyncTests.Typing_WithoutAnyPriorSourcePush_ReachesSource`, `NullSourcePush_IsNoOp_ThenTypingWorks`). **Echo guard:** `PasswordSync._updating` stops box→source echoes during a source push and source→box echoes during typing. A null push onto an empty box is a no-op, and a profile switch clears the box without writing back (`SourcePush_WritesBox_WithoutEcho`). **m8 is intact:** the VM's null↔"" rule and `PasswordBoxEcho_AfterLoad_IsNotAnEdit_CiphertextKept` are unchanged and pass. Smoke step 8 was added to `IMPLEMENTATION_NOTES.md`. These are the WPF parts that run only on Windows, so they were checked by reading the code plus `PasswordSync` unit tests, and smoke step 8 covers them at runtime. |
+| R2-n1 (eca1311) | **Fixed, and the classification is sane** | `CpeSessionTracker.cs:303`: the Fault-to-Inform rule now requires `status is not (401 or 407)`. A 401 keeps the challenge/retry path (AuthChallenge note, AuthFailed on a second 401). A 407 means a forward proxy between the tool and the ACS wants credentials (e.g. with `UseSystemProxy`). That is neither an ACS rejection of the Inform nor something the CPE can answer, so the existing `HttpError` (≥ 400) is correct. Test: the `EvaluateEnd_AuthChallengeWithFaultBody_NotAcsFault` theory (401 → no outcome plus AuthChallenge; 407 → HttpError). |
+| R2-n4 (9a285d8) | **Whitespace only** | `git diff -w 9a285d8~1 9a285d8` is empty; one file changed (`SimulatorView.xaml`), 147 lines out and 147 in. |
+| CI guard (1b8fe03) | **Valid** | `.github/workflows/ci.yml` parses with PyYAML (jobs `linux` and `windows`; the guard step sits before `./build.sh`). `actionlint` 1.7.12 with `shellcheck` 0.10.0 reports **no findings**, including the shell inside the `run:` block. `shellcheck build.sh` is clean. **Logic:** the workflow step fails on any non-empty `ACSTOOL_SKIP_NET_TIMEOUT` seen at workflow or job level. `build.sh` adds a second check when `CI=true` (set at job level, and by GitHub anyway), so a step-level `env:` on the build step is caught too. I tried the `build.sh` condition with the variable unset (passes) and set to 1 or 0 (fails). That's deliberately stricter than the test's own `== "1"` check, which is fine. `build.ps1` has the same check. Nit R3-n1. |
+
+#### New findings (8794603..1b8fe03)
+
+| ID | Severity | Location | Finding | Suggested fix |
+|---|---|---|---|---|
+| R3-n1 | Nit | `.github/workflows/ci.yml` (windows job) and `build.ps1:8-11` | The Windows job runs only `dotnet build` and `publish.ps1`. It never runs `build.ps1` or any tests, so the PowerShell check is never exercised in CI and nothing runs the suite on Windows. This was already the case before this branch. | Optionally run `./build.ps1 -NoCoverage` in the Windows job. It would also exercise the Windows-only code paths (DPAPI) if tests for them are added later. |
+
+No regressions found. `IMPLEMENTATION_NOTES.md` matches the code.
+
+#### Build and tests (private clone `/tmp/rr3-acs` @ 1b8fe03)
+
+- `CI=true` Release build of the whole solution, including `AcsTool.App`: **0 warnings, 0 errors**.
+- Full suite, Perf included: **524 passed, 1 skipped, 0 failed**: Core 308 + 1 skipped (`Dns_NonexistentInvalidTld_Dns`, because the sandbox resolver answers every name), Proxy 97, Simulator 65, Presentation 54. These **match CoderBot's counts exactly**. Re-review 2: 519 + 1 skipped.
+- Line coverage, Re-review 2 → now: Core 87.0 → **87.0** %, Proxy 89.7 → **89.7** %, Simulator 89.7 → **89.7** %, Presentation 85.2 → **85.4** %. All ≥ 80 %.
+
+#### Left for MVP sign-off (none of these blocks the merge)
+
+1. **Windows manual smoke checklist** (`IMPLEMENTATION_NOTES.md`, steps 1–8), which no one has run yet. It especially needs to cover:
+   - the c8c0861 layout: no clipping, no double scrollbars at 1280×820, and slow resizing across MinWidth/MinHeight with no flicker;
+   - the NEW-02 splitter;
+   - step 8 (PasswordBox on a default profile, shown as dots, CPE authenticates after a restart);
+   - the m8 banner with a profile copied from another Windows user;
+   - Settings → Save while running → Stop → Start.
+2. **Not verified anywhere yet:**
+   - real DPAPI (only a fake protector was tested on Linux);
+   - HTTPS upstream and all four TLS modes at runtime, including CustomCa with a valid CA (only the missing-file path is tested);
+   - WPF rendering in general.
+3. **Deferred findings, all accepted as non-blocking:**
+   - m2: a late trailing empty POST creates an orphan row; the R2-n2 case (empty POST after a Fault-to-Inform) has the same cause;
+   - m3: cookie-pair correlation across CPEs that share a cookie;
+   - m4: simulator captures show post-response cookies;
+   - m7: pretty-print race;
+   - m12 remainder: handler creation under the tracker lock;
+   - m15 second half: `OnClosing` robustness. The ✕-keeps-edits half is solved by refresh-on-open;
+   - R-n1 to R-n5;
+   - R2-n3: Settings refresh is called from code-behind;
+   - n1–n8;
+   - R3-n1.
+   Planned for M5 or later.
+4. **CI policy:** never set `ACSTOOL_SKIP_NET_TIMEOUT` in CI (now enforced). Look into it if `Dns_NonexistentInvalidTld_Dns` is ever reported as Skipped on the GitHub runner.
