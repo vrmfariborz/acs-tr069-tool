@@ -103,7 +103,7 @@ Deferred after the final review (re-review 3, @ 1b8fe03):
 
 ## CI fix (branch fix/ci-analyzers)
 
-- **Root cause:** After the merge, every Actions run failed in both jobs with `CA1859` in `tests/AcsTool.Core.Tests/SessionStoreTests.cs(17,60)`. Under `CI=true`, warnings are errors. `global.json` pinned 8.0.400 with `rollForward: latestMajor`. setup-dotnet installed SDK 8.0.427, but the runner images also come with a .NET 10 SDK, and `latestMajor` picks the newest installed SDK. CI therefore built with SDK 10, whose analyzers flag this case; local builds used 8.0.427, which doesn't.
+- **Root cause:** After the merge, every Actions run failed in both jobs with `CA1859` in `tests/AcsTool.Core.Tests/SessionStoreTests.cs(17,60)`. Under `CI=true`, warnings are errors. `global.json` pinned 8.0.400 with `rollForward: latestMajor`. setup-dotnet installed SDK 8.0.427, but the runner images also come with .NET 9 and 10 SDKs (`dotnet --info` lists 10.0.403 on Linux and 10.0.402 on Windows), and `latestMajor` picks the newest installed SDK. CI therefore built with SDK 10, whose analyzers flag this case; local builds used 8.0.427, which doesn't.
 - **Reproduced locally:** With SDK 10.0.403 installed side by side in `~/.dotnet`, the same single CA1859 error appeared. Pinning `AnalysisLevel` alone did not help, because the rule is part of the 8.0 set and the SDK 10 analyzer simply detects more cases. With the fix, SDK 10.0.403 reports no other new analyzer findings.
 - **Fix:**
   - `SessionStoreTests.Drain` now takes `InMemorySessionStore`.
@@ -111,3 +111,8 @@ Deferred after the final review (re-review 3, @ 1b8fe03):
   - Both CI jobs use `setup-dotnet` with `global-json-file: global.json`, so CI and local builds can't drift, and print `dotnet --info`.
   - `AnalysisLevel` is pinned to `8.0-recommended` instead of `latest-recommended`.
 - **R3-n1:** The Windows job now runs `./build.ps1 -NoCoverage` (restore, build and all non-Perf tests, including the `ACSTOOL_SKIP_NET_TIMEOUT` guard) before publishing and `--smoke-exit`.
+- **First test run on Windows** (found by R3-n1): two tests failed only on the Windows runner.
+  - `Build_Inform_MatchesGoldenFile`: the checkout's `core.autocrlf` converted the fixtures to CRLF. `.gitattributes` now marks `tests/fixtures/** -text`, so fixtures stay byte-exact.
+  - `FailedSession_ErrorStateKeepsEvents_ManualRetryIncrementsRetryCount` failed on a real ordering race. `SimulatedCpe` bumped `SessionsRun` before the final state change, so an observer could see the new count while the state was still InSession. The count is now bumped after the event bookkeeping and just before the final `SetState`, so the `StateChanged` notification the Running CPEs row refreshes from carries the new count. The engine tests now wait for both the count and the final state.
+  - Network tests needed no Windows skip.
+- **Result:** CI is green on both jobs with SDK 8.0.427. Each job runs Core 308, Proxy 97, Simulator 65 and Presentation 54 tests with 0 skipped; on the GitHub runners the DNS test actually runs.
