@@ -7,7 +7,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: '8.0.x' }
+        with: { global-json-file: global.json }
+      - run: dotnet --info
       - name: guard - network tests must not be skipped in CI
         run: |
           if [ -n "${ACSTOOL_SKIP_NET_TIMEOUT:-}" ]; then
@@ -20,8 +21,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: '8.0.x' }
-      - run: dotnet build AcsTool.sln -c Release
+        with: { global-json-file: global.json }
+      - run: dotnet --info
+      - name: build and test (build.ps1 -NoCoverage; includes the ACSTOOL_SKIP_NET_TIMEOUT guard)
+        shell: pwsh
+        run: ./build.ps1 -NoCoverage
       - run: ./publish.ps1
         shell: pwsh
       - name: smoke start (--smoke-exit)

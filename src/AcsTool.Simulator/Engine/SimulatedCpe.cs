@@ -216,12 +216,14 @@ public sealed class SimulatedCpe : IAsyncDisposable
             _globalGate.Release();
         }
         LastResult = result;
-        SessionsRun++;
         var ok = result.Outcome == SessionOutcome.Completed;
         if (result.InformAccepted || ok)
         {
             _events.Remove(events, ok);
         }
+        // Counted after the event bookkeeping and before the final state change, so the StateChanged notification
+        // (which the Running CPEs row uses to refresh its counter) already carries the new count.
+        SessionsRun++;
         if (ct.IsCancellationRequested)
         {
             return;

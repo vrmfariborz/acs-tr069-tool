@@ -14,7 +14,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
-    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- Pinned to the SDK major (not "latest") so a newer SDK on a runner or dev box cannot enable new rules (CI fix, CA1859). -->
+    <AnalysisLevel>8.0-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <Version>0.1.0</Version>

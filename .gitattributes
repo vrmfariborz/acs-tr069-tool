@@ -1,0 +1,3 @@
+# Test fixtures are compared byte-for-byte (golden files, CRLF/whitespace cases): never convert line endings.
+# Without this a Windows checkout (core.autocrlf=true) turned LF into CRLF and broke Build_Inform_MatchesGoldenFile.
+tests/fixtures/** -text

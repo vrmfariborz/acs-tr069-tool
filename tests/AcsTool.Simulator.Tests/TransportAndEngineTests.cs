@@ -110,7 +110,7 @@ public class EngineTests
         cpe.StateChanged += (_, s) => { lock (states) { states.Add(s.Kind); } };
         Assert.Equal(CpeStateKind.Idle, cpe.State.Kind);
         cpe.Post(new CpeTrigger.Manual([new EventStruct(EventCodes.Boot)]));
-        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 1), "session did not finish");
+        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 1 && cpe.State.Kind == CpeStateKind.Idle), "session did not finish");
         Assert.Empty(acs.Violations);
         Assert.Equal(SessionOutcome.Completed, cpe.LastResult!.Outcome);
         Assert.Equal("ntp.acs.test", cpe.Store.Get("InternetGatewayDevice.Time.NTPServer1")!.Value);
@@ -170,13 +170,14 @@ public class EngineTests
         var store = Kit.NewStore();
         await using var engine = Kit.Engine(store);
         var cpe = (await engine.StartProfileAsync(Kit.Profile($"http://127.0.0.1:{port}/acs"), sendBootNow: true, default)).Single();
-        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 1));
+        // SessionsRun is bumped just before the final state change: wait for both (a Windows CI run saw InSession in between).
+        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 1 && cpe.State.Kind != CpeStateKind.InSession), cpe.State.ToString());
         Assert.Equal(CpeStateKind.Error, cpe.State.Kind);
         Assert.Equal(1u, cpe.State.RetryCount);
         Assert.Contains("UpstreamError", cpe.State.LastError, StringComparison.Ordinal);
         Assert.Equal(EventCodes.Boot, Assert.Single(cpe.PendingEvents).EventCode);
         cpe.Post(new CpeTrigger.Manual([]));
-        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 2));
+        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 2 && cpe.State.Kind != CpeStateKind.InSession), cpe.State.ToString());
         Assert.Equal(2u, cpe.State.RetryCount);
     }
 
