@@ -172,3 +172,12 @@ Deferred after the fix/ci-followups review (non-blocking):
   - The Release build of the App produced `net10.0-windows/AcsTool.dll`.
   - `dotnet publish -r win-x64 --self-contained` from Linux succeeded. Its runtimeconfig includes NETCore, WindowsDesktop and AspNetCore 10.0.14.
   - Running the app (smoke checklist) is only possible on Windows. CI's `--smoke-exit` step covers start and exit.
+
+## Doc-review bug fixes (branch fix/doc-findings)
+
+From the BUG TRIAGE in the user-guide review (items a, d, f, g; b, c, e and h are by design or doc-only and stay with the docs branch):
+
+- **a:** `CwmpClientSession` now checks for a SOAP Fault answering the Inform before it looks at the HTTP status, so Fault + HTTP 500 ends as `AcsFault`, the same as the proxy (`CpeSessionTracker.EvaluateEnd`). 401 and 407 keep their status classification (`AuthFailed` / `HttpError`). A 500 with a non-Fault body, or a non-Inform exchange answered with a 500 Fault, stays `HttpError`, which also matches the proxy. The user guide's "simulator says HTTP error" troubleshooting entry and the simulator-mode note can be dropped on the docs branch.
+- **d:** Settings *Restore defaults* keeps `proxy.tls` and `proxy.maxRequestBodyBytes`. The window doesn't edit them, so they're carried over like the Simulator/Ui/Logging sections. `Build()` already started from `_base.Proxy`; the loss came from `RestoreDefaults` replacing `_base`.
+- **f:** The CustomCa start error now reads "TLS mode CustomCa needs proxy.tls.customCaPath in settings.json." (no Settings → TLS page until M5).
+- **g:** The session detail Summary tab lists the selected exchange's proxy notes under "Proxy notes" (hidden when empty), via `ExchangeItemViewModel.Notes`/`HasNotes`. The XAML is covered by lint only; it needs a look in the Windows smoke run.
