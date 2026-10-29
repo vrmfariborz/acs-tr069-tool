@@ -287,6 +287,36 @@ public class MainAndSettingsTests
     }
 
     [Fact]
+    public async Task Settings_RestoreDefaults_KeepsHandEditedTlsAndMaxRequestBody()
+    {
+        // Doc review finding (d): proxy.tls and maxRequestBodyBytes are only editable in settings.json; Restore defaults
+        // must not wipe them when the user saves afterwards.
+        await using var h = AppHarness.Create();
+        var tls = new AcsTool.Core.Net.TlsOptions(AcsTool.Core.Net.TlsValidationMode.CustomCa, ["AB12"], "/etc/acs/ca.pem",
+            System.Security.Authentication.SslProtocols.Tls12, "/etc/acs/client.pfx", "protected");
+        var holder = h.Get<SettingsHolder>();
+        holder.Current = holder.Current with { Proxy = holder.Current.Proxy with { Port = 17000, Tls = tls, MaxRequestBodyBytes = 2_000_000 } };
+        var vm = h.Get<SettingsViewModel>();
+        vm.Refresh();
+        Assert.Equal(17000, vm.Port);
+
+        vm.RestoreDefaultsCommand.Execute(null);
+        Assert.Equal(7547, vm.Port);
+        var built = vm.Build();
+        Assert.Equal(tls, built.Proxy.Tls);
+        Assert.Equal(2_000_000, built.Proxy.MaxRequestBodyBytes);
+        Assert.Equal(AppSettings.Default.Proxy with { Tls = tls, MaxRequestBodyBytes = 2_000_000 }, built.Proxy);
+
+        Assert.True(await vm.SaveAsync());
+        var loaded = await h.Get<ISettingsStore>().LoadAsync(default);
+        Assert.Equal(AcsTool.Core.Net.TlsValidationMode.CustomCa, loaded.Proxy.Tls!.Mode);
+        Assert.Equal("/etc/acs/ca.pem", loaded.Proxy.Tls.CustomCaPath);
+        Assert.Equal(["AB12"], loaded.Proxy.Tls.PinnedSha256!);
+        Assert.Equal(2_000_000, loaded.Proxy.MaxRequestBodyBytes);
+        Assert.Equal(7547, loaded.Proxy.Port);
+    }
+
+    [Fact]
     public async Task MainViewModel_StatusAggregates_InitializeAndShutdown()
     {
         await using var acs = await FakeAcs.StartAsync();
