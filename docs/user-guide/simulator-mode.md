@@ -229,10 +229,10 @@ Remember: a running CPE keeps the profile it was started with. After editing any
 
 ## Walkthrough 3: test a fault path in your ACS
 
-1. Tick a custom event your ACS should reject (e.g. type `99 BOGUS` in **Custom**, click **+**). Start the CPE if it isn't running.
+1. Tick a custom event your ACS should reject (e.g. type `99 BOGUS` in **Custom**, click **+**). (**Send Inform now** starts the CPE if it isn't running.)
 2. **Send Inform now**. If the ACS answers with a SOAP Fault, the session ends **⚠ ACS fault** (fault sent with HTTP 200; the note shows `ACS fault <code> <string>`) or **⚠ HTTP error** (fault sent with HTTP 500; the fault is in the Summary and Raw tabs). Either way the CPE goes to `Error` with Retry 1.
 3. To go back to normal: **⏹ Stop** and **▶ Start CPE** first. A failed Inform keeps its events pending, so `99 BOGUS` would be sent again whatever the ticks say; restarting gives the CPE an empty pending-event queue and Retry 0. Then untick the custom event and send again.
-4. To see `RetryCount` at work, make the ACS unreachable for one attempt (e.g. point the profile at the proxy and stop the proxy): **Send Inform now** ends **✖ Upstream error** and Retry becomes 1. Start the proxy again and send once more: the Inform carries `RetryCount` `1` (Summary tab), and after the session completes Retry returns to 0.
+4. To see `RetryCount` at work, make the ACS unreachable for one attempt (e.g. set **URL** to the proxy, `http://127.0.0.1:7547/acs`, then **⏹ Stop** and **▶ Start CPE** so the CPE uses it, and stop the proxy): **Send Inform now** ends **✖ Upstream error** and Retry becomes 1. Start the proxy again and send once more: the Inform carries `RetryCount` `1` (Summary tab), and after the session completes Retry returns to 0.
 
 ## Walkthrough 4: several CPEs in parallel
 
