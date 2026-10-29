@@ -46,7 +46,7 @@ Set-ExecutionPolicy -Scope Process Bypass   # only for this PowerShell window
 
 Options: `.\build.ps1 -NoCoverage` (faster) and `.\build.ps1 -IncludePerf` (also runs the parser performance test).
 
-A healthy run ends with every test project reporting `Failed: 0`. A few tests are reported as **Skipped** on purpose: two known-issue repros for custom CA files (see [roadmap.md](roadmap.md)) and, on machines where every DNS name resolves, one DNS test.
+A healthy run ends with every test project reporting `Failed: 0`. A few tests are reported as **Skipped** on purpose: two known-issue repros for custom CA files (see [roadmap.md](roadmap.md)), one repro of a known test flake (FLAKY-01) and, on machines where every DNS name resolves, one DNS test.
 
 ## 4. Publish the app
 
