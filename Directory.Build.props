@@ -1,11 +1,11 @@
 <Project>
   <!--
     Single switch for the target framework (plan D2 / Q1).
-    To move to .NET 10 LTS change only this property (plus package bumps in Directory.Packages.props).
+    Plan Q1 resolved: .NET 10 LTS (net10.0). A future move changes only this property (plus package bumps).
     The WPF App derives its TFM from it: $(AcsToolTfm)-windows.
   -->
   <PropertyGroup>
-    <AcsToolTfm>net8.0</AcsToolTfm>
+    <AcsToolTfm>net10.0</AcsToolTfm>
     <TargetFramework>$(AcsToolTfm)</TargetFramework>
   </PropertyGroup>
 
@@ -15,7 +15,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <!-- Pinned to the SDK major (not "latest") so a newer SDK on a runner or dev box cannot enable new rules (CI fix, CA1859). -->
-    <AnalysisLevel>8.0-recommended</AnalysisLevel>
+    <AnalysisLevel>10.0-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <Version>0.1.0</Version>
