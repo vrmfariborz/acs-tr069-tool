@@ -194,7 +194,10 @@ public class LiveNetworkClassificationTests
         {
             var port = ((IPEndPoint)l.LocalEndpoint).Port;
             var accept = l.AcceptTcpClientAsync();
-            var r = await Send($"http://127.0.0.1:{port}/acs", TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(500));
+            // 3 s, not 500 ms: on a cold CI runner (coverage instrumentation, parallel test classes) the first request through
+            // a new handler can spend >500 ms before it reaches the connect callback, so the timeout fired while the phase was
+            // still Dns (FLAKY-02, linux run 40860632752). The asserts are unchanged; the server still never responds.
+            var r = await Send($"http://127.0.0.1:{port}/acs", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(3));
             Assert.Equal(UpstreamErrorKind.Timeout, r.Error!.Kind);
             Assert.Equal(RequestPhase.AwaitingResponse, r.Error.Phase);
             (await accept).Dispose();

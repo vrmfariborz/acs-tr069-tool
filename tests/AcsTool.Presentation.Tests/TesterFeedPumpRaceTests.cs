@@ -14,7 +14,7 @@ namespace AcsTool.Presentation.Tests;
 /// </summary>
 public class TesterFeedPumpRaceTests
 {
-    [Fact(Skip = "FLAKY-01: SessionFeedPump.CollectAndFlushAsync does not drain the channel once more after the deadline; a change written before Advance can miss that flush (fix: final Drain before FlushAsync)")]
+    [Fact]
     public async Task ChangeWrittenBeforeDeadline_IsInThatFlush_EvenWhenThePoolIsBusy()
     {
         var time = new FakeTimeProvider();
