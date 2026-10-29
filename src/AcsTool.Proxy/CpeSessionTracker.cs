@@ -299,7 +299,8 @@ public sealed class CpeSessionTracker : IAsyncDisposable
         if (responseKind == CwmpMessageKind.Fault)
         {
             session.SawAcsFault = true;
-            if (requestKind == CwmpMessageKind.Inform)
+            // 401/407 challenges keep their auth-retry handling even if the body happens to be a SOAP Fault (review R2-n1).
+            if (requestKind == CwmpMessageKind.Inform && status is not (401 or 407))
             {
                 // TR-069 §3.7.1.4 / A.3.2.1: a CPE whose Inform is answered with a SOAP Fault ends the session and retries
                 // later; it sends nothing more, so waiting for the idle sweep would only mislabel it Abandoned (BUG-01).

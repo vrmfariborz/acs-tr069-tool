@@ -175,6 +175,20 @@ public class TrackerTests
         Assert.Null(CpeSessionTracker.EvaluateEnd(s2, CwmpMessageKind.GetParameterValuesResponse, Resp(200, new byte[10]), CwmpMessageKind.Fault, notes));
     }
 
+    [Theory]
+    [InlineData(401)]
+    [InlineData(407)]
+    public void EvaluateEnd_AuthChallengeWithFaultBody_NotAcsFault(int status)
+    {
+        // R2-n1: a challenge whose body is a SOAP Fault still goes through the auth retry.
+        var s = Resolve(InformA, "c1");
+        var notes = new List<string>();
+        var outcome = CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Inform, Resp(status, new byte[10]), CwmpMessageKind.Fault, notes);
+        // 401: first challenge -> no outcome yet (the CPE retries with credentials); 407: existing HTTP-error handling.
+        Assert.Equal(status == 401 ? null : SessionOutcome.HttpError, outcome);
+        Assert.Equal(status == 401, notes.Contains("AuthChallenge"));
+    }
+
     [Fact]
     public void EvaluateEnd_TwoConsecutive401_AuthFailed()
     {
