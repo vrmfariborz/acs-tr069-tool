@@ -66,6 +66,13 @@ public sealed class CwmpClientSession
             {
                 return End(c1, informAccepted, followUps, delivered);
             }
+            // A SOAP Fault answering the Inform is checked before the HTTP status, like the proxy (CpeSessionTracker.EvaluateEnd):
+            // SOAP 1.1 faults usually come with HTTP 500. 401/407 challenges keep their status classification (doc review a).
+            if (parsed.Kind == CwmpMessageKind.Fault && r.StatusCode is not (401 or 407))
+            {
+                var f = (CwmpFault?)parsed.Message;
+                return End(SessionOutcome.AcsFault, null, informAccepted, followUps, delivered, $"ACS fault {f?.FaultCode} {f?.FaultString}");
+            }
             if (r.StatusCode == 401)
             {
                 return End(SessionOutcome.AuthFailed, r.Error, informAccepted, followUps, delivered, "ACS rejected the credentials (401)");
@@ -73,11 +80,6 @@ public sealed class CwmpClientSession
             if (r.StatusCode is not (>= 200 and < 300))
             {
                 return End(SessionOutcome.HttpError, r.Error, informAccepted, followUps, delivered);
-            }
-            if (parsed.Kind == CwmpMessageKind.Fault)
-            {
-                var f = (CwmpFault?)parsed.Message;
-                return End(SessionOutcome.AcsFault, null, informAccepted, followUps, delivered, $"ACS fault {f?.FaultCode} {f?.FaultString}");
             }
             if (parsed.Kind != CwmpMessageKind.InformResponse)
             {
