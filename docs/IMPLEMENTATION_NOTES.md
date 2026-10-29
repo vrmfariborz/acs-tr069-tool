@@ -129,3 +129,46 @@ Deferred after the fix/ci-followups review (non-blocking):
 - Add `permissions: contents: read` to `ci.yml`.
 - Consider pinning the Linux runner to `ubuntu-24.04` instead of `ubuntu-latest`.
 - TesterBot: the CPE loop's catch block sets Error without bumping `SessionsRun`.
+
+## Migration to .NET 10 (branch chore/net10, plan Q1 resolved)
+
+- **Targets:**
+  - `AcsToolTfm` is `net10.0` and the App targets `net10.0-windows` (still `EnableWindowsTargeting`).
+  - `global.json` requires 10.0.403 with `rollForward: latestFeature`, so it uses the newest installed 10.0.x and never 11.
+  - `AnalysisLevel` is `10.0-recommended`. The SDK 10 analyzers reported no new findings, and no suppressions were added.
+- **Packages:**
+  - `Microsoft.Extensions.*` 8.0.x → 10.0.14.
+  - `Microsoft.AspNetCore.TestHost` 8.0.33 → 10.0.14. Kestrel still comes through the `Microsoft.AspNetCore.App` FrameworkReference.
+  - `Microsoft.Extensions.TimeProvider.Testing` 8.10.0 → 10.11.0.
+  - `CommunityToolkit.Mvvm` 8.4.0 → 8.4.2.
+  - `Serilog.Extensions.Hosting` 8.0.0 → 10.0.0 and `Serilog.Sinks.File` 6.0.0 → 7.0.0.
+  - `Microsoft.NET.Test.Sdk` 17.14.1 → 18.11.0.
+  - `xunit.runner.visualstudio` 2.8.2 → 4.0.1, which still runs v2 tests.
+  - `coverlet.collector` 6.0.4 → 10.1.0.
+  - `Xunit.SkippableFact` 1.5.23 → 1.5.85.
+  - `xunit` stays 2.9.3, the latest v2. Moving to xunit.v3 is a separate migration, deferred: v3 has a built-in `Assert.Skip`, so it would replace SkippableFact.
+  - `System.Security.Cryptography.ProtectedData` was **removed**. On net10.0-windows it is part of the WindowsDesktop shared framework, and SDK 10 raises NU1510 ("will not be pruned"), an error under CI. The self-contained publish still ships `System.Security.Cryptography.ProtectedData.dll` from the desktop runtime, and the DPAPI calls are unchanged.
+- **Behaviour changes checked** (against the .NET 9 and 10 and ASP.NET Core 10 breaking-change lists):
+  - **X509 (SYSLIB0057, .NET 9):** `TlsValidatorFactory.LoadCertificate` used the obsolete `new X509Certificate2(byte[])` under a pragma. It now uses `X509CertificateLoader.LoadCertificate` for DER, falling back to `LoadPkcs12Collection` for password-less PFX, which the old constructor accepted implicitly. PEM still goes through `CreateFromPem`. New tests cover PEM, DER, PFX and garbage. `new X509Certificate2(X509Certificate)` in the validation callback is a copy constructor and is not obsolete.
+  - **Kestrel / ASP.NET Core 10:**
+    - The proxy uses `WebApplication.CreateSlimBuilder`, not the now-obsolete `WebHostBuilder`/`IWebHost`.
+    - None of the other ASP.NET Core 10 breaking changes apply: cookie-auth API redirects, IExceptionHandler diagnostics, `IPNetwork`/`KnownNetworks`, OpenAPI and Razor.
+  - **HttpClient / SocketsHttpHandler:**
+    - The per-session `SocketsHttpHandler` is created directly, without `IHttpClientFactory`, so the .NET 9 factory changes (header and query redaction in logs, default handler) don't apply.
+    - The "HTTP/3 disabled with PublishTrimmed" change doesn't apply either, because the app is not trimmed and uses HTTP/1.1 upstream.
+  - **TLS / SslStream:** no API or behaviour change hit; tests pass. On Unix .NET 10 requires OpenSSL 1.1.1+, which the runners and this box have.
+  - **DPAPI:** `ProtectedData` behaves the same; only the packaging changed (see above). It can still only be exercised on Windows.
+  - **WPF:**
+    - .NET 10 rejects empty `<Grid.ColumnDefinitions>`/`<Grid.RowDefinitions>` with MC3063. We have none; the XAML compiles on SDK 10.
+    - .NET 10 also crashes on a mistyped `DynamicResource`. We have no `DynamicResource` at all.
+    - The "`GetXmlNamespaceMaps` type change" (.NET 9) is not used.
+  - **Other:**
+    - Runtime SIGTERM default handlers were removed. The App is WPF, and the Generic Host's lifetime handles shutdown, so nothing changes.
+    - Configuration null values are now preserved, but settings use our own JSON store, not `IConfiguration` binding.
+    - C# 14 span overload resolution: compiles and passes.
+    - `dotnet restore` now audits transitive packages, and it reports nothing.
+- **Verified locally:**
+  - `CI=true ./build.sh` passed with 0 warnings and all tests run on the net10.0 runtime (10.0.14), coverage included.
+  - The Release build of the App produced `net10.0-windows/AcsTool.dll`.
+  - `dotnet publish -r win-x64 --self-contained` from Linux succeeded. Its runtimeconfig includes NETCore, WindowsDesktop and AspNetCore 10.0.14.
+  - Running the app (smoke checklist) is only possible on Windows. CI's `--smoke-exit` step covers start and exit.
