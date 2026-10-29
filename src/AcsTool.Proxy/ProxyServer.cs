@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using AcsTool.Core.Net;
 using AcsTool.Core.Sessions;
 using AcsTool.Core.Settings;
 using Microsoft.AspNetCore.Builder;
@@ -83,7 +84,11 @@ public sealed class ProxyServer : IAsyncDisposable
             BoundPort = BoundUrls.Select(u => Uri.TryCreate(u.Replace("0.0.0.0", "127.0.0.1", StringComparison.Ordinal).Replace("[::]", "[::1]", StringComparison.Ordinal), UriKind.Absolute, out var x) ? x.Port : 0)
                 .FirstOrDefault(p => p > 0);
             _tracker.StartSweeper();
-            _log.LogInformation(1011, "Proxy listening on {Urls} → {Upstream}", string.Join(", ", BoundUrls), _settings.UpstreamUrl);
+            _log.LogInformation(1011, "Proxy listening on {Urls} → {Upstream}", string.Join(", ", BoundUrls), UrlUtil.RedactUserInfo(_settings.UpstreamUrl));
+            if (UrlUtil.HasUserInfo(_settings.UpstreamUrl))
+            {
+                _log.LogWarning(1012, "Credentials in the upstream URL are ignored (not forwarded); the CPE's Authorization header is relayed");
+            }
             SetState(ProxyState.Running);
         }
         finally

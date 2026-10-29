@@ -125,9 +125,9 @@ public sealed partial class ProxyViewModel : ObservableValidator, IAsyncDisposab
     public int ActiveSessions => _server?.Tracker.ActiveCount ?? 0;
 
     public static ValidationResult? ValidateUpstreamUrl(string? value, ValidationContext context) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps) && u.Host.Length > 0
-            ? ValidationResult.Success
-            : new ValidationResult("Upstream must be an absolute http:// or https:// URL");
+        !(Uri.TryCreate(value, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps) && u.Host.Length > 0)
+            ? new ValidationResult("Upstream must be an absolute http:// or https:// URL")
+            : u.UserInfo.Length > 0 ? new ValidationResult(UrlUtil.UserInfoRejectedMessage) : ValidationResult.Success;
 
     public static ValidationResult? ValidateBindAddress(string? value, ValidationContext context) =>
         IPAddress.TryParse(value, out _) || string.Equals(value, "localhost", StringComparison.OrdinalIgnoreCase)

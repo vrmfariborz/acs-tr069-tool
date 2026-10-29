@@ -165,7 +165,7 @@ public sealed class CpeSessionTracker : IAsyncDisposable
     private ProxySession CreateLocked(IncomingRequest req, DeviceIdStruct? deviceId, IReadOnlyList<EventStruct> events,
         CwmpVersion version, string? label, bool orphan, bool oneShot)
     {
-        var id = _sink.StartSession(new SessionStart(SessionSource.Proxy, req.ClientEndpoint, _settings.UpstreamUrl, deviceId, events, version, label));
+        var id = _sink.StartSession(new SessionStart(SessionSource.Proxy, req.ClientEndpoint, UrlUtil.RedactUserInfo(_settings.UpstreamUrl), deviceId, events, version, label));
         var tracker = new PhaseTracker();
         var managed = _settings.CookieMode == CookieMode.ManagedPerCpe;
         var cookies = managed ? new CookieContainer() : null;

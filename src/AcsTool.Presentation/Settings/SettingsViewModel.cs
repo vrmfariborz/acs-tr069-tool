@@ -49,9 +49,9 @@ public sealed partial class SettingsViewModel : ObservableValidator
     public IReadOnlyList<FailureMode> FailureModes { get; } = Enum.GetValues<FailureMode>();
 
     public static ValidationResult? ValidateUrl(string? value, ValidationContext context) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps)
-            ? ValidationResult.Success
-            : new ValidationResult("Must be an absolute http:// or https:// URL");
+        !(Uri.TryCreate(value, UriKind.Absolute, out var u) && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
+            ? new ValidationResult("Must be an absolute http:// or https:// URL")
+            : u.UserInfo.Length > 0 ? new ValidationResult(AcsTool.Core.Net.UrlUtil.UserInfoRejectedMessage) : ValidationResult.Success;
 
     public void LoadFrom(AppSettings s)
     {

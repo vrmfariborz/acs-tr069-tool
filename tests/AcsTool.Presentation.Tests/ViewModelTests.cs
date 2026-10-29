@@ -100,6 +100,7 @@ public class ProxyViewModelTests
     [InlineData("not a url")]
     [InlineData("ftp://acs")]
     [InlineData("")]
+    [InlineData("http://user:secret@acs.example:7557/acs")]
     public async Task InvalidUpstream_DisablesStart(string url)
     {
         await using var h = AppHarness.Create();
@@ -111,6 +112,18 @@ public class ProxyViewModelTests
         Assert.True(vm.StartStopCommand.CanExecute(null));
         vm.Port = 0;
         Assert.False(vm.StartStopCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task UpstreamWithCredentials_RejectedWithClearMessage()
+    {
+        await using var h = AppHarness.Create();
+        var vm = h.Get<ProxyViewModel>();
+        vm.UpstreamUrl = "http://user:secret@acs.example/acs";
+        Assert.Contains(vm.GetErrors(nameof(ProxyViewModel.UpstreamUrl)), e => e.ErrorMessage == AcsTool.Core.Net.UrlUtil.UserInfoRejectedMessage);
+        var settings = h.Get<SettingsViewModel>();
+        settings.UpstreamUrl = "https://u:p@acs.example/acs";
+        Assert.False(await settings.SaveAsync());
     }
 
     [Fact]

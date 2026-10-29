@@ -208,4 +208,15 @@ public class LiveNetworkClassificationTests
             l.Stop();
         }
     }
+
+    [Theory]
+    [InlineData("http://user:secret@acs.example:7557/acs?x=1", "http://acs.example:7557/acs?x=1", true)]
+    [InlineData("https://acs.example/acs", "https://acs.example/acs", false)]
+    [InlineData("not a url", "not a url", false)]
+    public void UrlUtil_RedactsUserInfo(string url, string expected, bool hasUserInfo)
+    {
+        Assert.Equal(expected, UrlUtil.RedactUserInfo(url));
+        Assert.Equal(hasUserInfo, UrlUtil.HasUserInfo(url));
+    }
 }
+

@@ -344,4 +344,20 @@ public class ForwardingTests
         Assert.Equal(SessionOutcome.Completed, s.Outcome);
         Assert.Equal(3, s.Exchanges.Count);
     }
+
+    [Fact]
+    public async Task UpstreamUrlWithCredentials_NotForwarded_RedactedInSessionTarget()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        var withCreds = new UriBuilder(acs.BaseUri) { UserName = "user", Password = "secret" }.Uri.ToString();
+        await using var h = await ProxyHarness.StartAsync(acs, s => s with { UpstreamUrl = withCreds });
+        using var client = ProxyHarness.CpeClient();
+        (await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()))).Dispose();
+        Assert.True(await TestUtil.WaitUntilAsync(() => acs.Received.Count == 1));
+        Assert.Null(acs.Received[0].Header("Authorization"));
+        var s = Assert.Single(h.Store.GetAll());
+        Assert.DoesNotContain("secret", s.TargetUrl, StringComparison.Ordinal);
+        Assert.DoesNotContain("user", s.TargetUrl, StringComparison.Ordinal);
+    }
 }
+
