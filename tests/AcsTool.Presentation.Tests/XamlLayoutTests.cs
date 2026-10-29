@@ -112,4 +112,15 @@ public class XamlLayoutTests
             Assert.Null(root.Attribute("Height"));
         }
     }
+
+    [Fact]
+    public void SessionDetail_SummaryTab_ShowsExchangeNotes()
+    {
+        // Doc review finding (g): the Summary tab (DataContext = SelectedExchange) lists the exchange's proxy notes.
+        var summary = Load("SessionDetailView.xaml").Descendants(Wpf + "TabItem").Single(t => (string?)t.Attribute("Header") == "Summary");
+        var notes = summary.Descendants(Wpf + "ItemsControl").Single(i => (string?)i.Attribute("ItemsSource") == "{Binding Notes}");
+        var group = notes.Parent!;
+        Assert.Equal("StackPanel", group.Name.LocalName);
+        Assert.Contains("{Binding HasNotes", (string?)group.Attribute("Visibility") ?? "", StringComparison.Ordinal);
+    }
 }

@@ -188,7 +188,10 @@ public sealed partial class ExchangeItemViewModel : ObservableObject
 
     public IReadOnlyList<HeaderRow> ResponseHeaders => Record.Response is { } r ? Headers(r) : [];
 
+    /// <summary>Per-exchange proxy notes (path rewrite, cookie handling, ...), shown on the Summary tab (doc review g).</summary>
     public IReadOnlyList<string> Notes => Record.Notes;
+
+    public bool HasNotes => Record.Notes.Count > 0;
 
     public string RequestRaw => _requestRaw ??= Decode(Record.Request);
 
