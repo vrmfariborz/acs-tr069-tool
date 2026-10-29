@@ -349,3 +349,97 @@ There were no crashes. Every invalid input becomes a `ProxyStartException` with 
 ### 11.6 Verdict
 
 **PASS (conditional on W-23…W-28 on Windows).** The build, tests, CI, stress and self-contained publish are clean on .NET 10. The CA loader migration did not regress any format the old code accepted, apart from the pre-existing BOM/bundle issues (NET10-01/02, not caused by the migration). It improves the empty-file case and leaf+chain PFX handling. DPAPI compatibility and the clean-machine launch can only be proven on Windows.
+
+## 12. Doc-review fixes `fix/doc-findings` (`8d8c10c..b8d33bb`) and the FeedPump flake
+
+Verified by TesterBot on 2026-10-29 in separate worktrees. Branch `tester/doc-findings` is based on `b8d33bb`. `bin/obj` were cleaned before each run.
+
+### 12.1 Results on `b8d33bb` (actual output)
+
+| Step | Result |
+|---|---|
+| `dotnet build AcsTool.sln -c Release` | 0 Error(s), 0 Warning(s) |
+| `dotnet test -c Release` | Core 323/0/3, Proxy 102/0/0, Simulator 72/0/0, Presentation 57/0/0, so **554 passed / 0 failed / 3 skipped** (the DNS test plus the NET10-01/02 repros) |
+| `CI=true ./build.sh` | 0 warnings; **553 / 0 / 3** (Core 322 + 3 skipped) |
+| `CI=true ./build.sh` with the tests below | 0 warnings; Core 322/0/3, Proxy 102/0/0, Simulator 97/0/0, Presentation 59/0/1, so **580 / 0 / 4** (the extra skip is the FLAKY-01 repro) |
+
+### 12.2 Probes
+
+**(a) Simulator Fault classification.** `TesterDocFindingsTests` runs over real HTTP (FakeAcs + HttpCwmpTransport), both directly and simulator → proxy → FakeAcs.
+
+| ACS answer to the Inform | Simulator | Proxy (same exchange) |
+|---|---|---|
+| 500 + cwmp Fault (`text/xml`) | AcsFault, note `ACS fault 8005 …` | AcsFault |
+| 500 + Fault with `text/html` / no Content-Type | AcsFault | AcsFault |
+| 500 + plain SOAP Fault (no cwmp detail) | AcsFault (note `ACS fault 0 `) | AcsFault |
+| 500 empty / 500 HTML | HttpError | HttpError |
+| 200 + Fault | AcsFault | AcsFault |
+| 407 + Fault / 407 empty | HttpError | HttpError |
+| 401 + Fault (no credentials) | AuthFailed, note `ACS rejected the credentials (401)` | – |
+| 401 Digest, wrong password | AuthFailed | – |
+
+After an InformResponse, a 500 Fault, a 500 empty answer or a 407 Fault to the empty POST gives HttpError, and a 401 gives AuthFailed. In every failure case the CPE state is `Error` with Retry 1.
+
+**(d) Restore defaults.** `TesterDocFindingsSettingsTests`:
+- Restore defaults + Save resets every proxy and capture field the window shows.
+- It keeps `proxy.tls` (mode, pins, CA path), `maxRequestBodyBytes`, and the `simulator`, `ui` and `logging` sections.
+- The Proxy tab follows the change: port, upstream and cookies are reset, and the TLS drop-down keeps the hand-set mode, e.g. **IgnoreErrors**.
+- Cancel after Restore defaults discards the reset.
+- Every field that gets reset has a binding in `SettingsWindow.xaml`.
+
+**(f)** The message is now *TLS mode CustomCa needs proxy.tls.customCaPath in settings.json.* (Proxy test added by the branch.)
+
+**(g)** The Summary tab shows a **Proxy notes** list for the selected exchange (`HasNotes` → `BoolToVisibility`, a key defined in `Themes/Light.xaml`). Simulator exchanges never carry exchange notes (`CompleteExchange` without notes), so the label never appears on a simulator session. The XAML is only linted on Linux, never rendered.
+
+### 12.3 Findings
+
+- **DF-01 (Low, pre-existing).** For a SOAP Fault without a cwmp `detail`, the note reads `ACS fault 0 ` (code 0, empty string). The SOAP `faultcode`/`faultstring` (`soap:Server Internal error`) are parsed but not shown. This affects the 2xx path too.
+- **DF-02 (Info).** Restore defaults keeps the TLS **mode** too, so `IgnoreErrors` survives a "restore defaults". This is consistent with "the window doesn't edit TLS", but the user guide (`proxy-mode.md:108`, `settings-reference.md:177`, `troubleshooting.md:101`, `ui-tour.md:300`) still says it resets `tls`.
+- **DF-03 (Low, pre-existing, observation).** In the simulator, a TransferComplete exchange ignores the HTTP status: a 401 or 500 only gives the note "TransferComplete not acknowledged", and the session continues with the empty POST.
+- **Docs to update when this branch merges** (`docs/user-guide`, 329062b, documents the old behavior as "known issue, fix planned"):
+  - `simulator-mode.md:194,233`
+  - `proxy-mode.md:27,108,125,137,143,145,157,199,301,310` ("not shown in the UI yet")
+  - `troubleshooting.md:13,58,94–107`
+  - `roadmap.md:19–26`
+  - `settings-reference.md:177–181`
+  - `ui-tour.md:300`
+
+### 12.4 FLAKY-01: `FeedPumpTests.TenThousandChangesOverOneSimulatedSecond` (Medium, test reliability)
+
+**Stress results** (`b8d33bb`, Release):
+
+| Run | Result |
+|---|---|
+| 50 sequential runs | 50/50 green |
+| 16 busy loops on 8 cores (loadavg 21–25), 5 rounds × 4 parallel processes | **2 of 20 failed** |
+| Full Presentation assembly ×10 (2 parallel processes, same load) | 10/10 green |
+
+Exact failure texts:
+- `Assert.All() Failure: 49 out of 50 items in the collection did not pass. … Error: The given key '…' was not present in the dictionary.` This is round 0: `firstInstances` was incomplete.
+- `Assert.All() Failure: 48 out of 50 items in the collection did not pass. … Assert.Equal() Failure: Collections differ … Expected: ["n9997"] Actual: ["n8997"]`. This is round 10: the last batch missed that round's changes.
+
+**Cause.** In `SessionFeedPump.CollectAndFlushAsync`, `FakeTimeProvider.Advance` completes the flush deadline **inline on the test thread**. The channel's `WaitToReadAsync` task completes too, but its continuations are asynchronous, so the signal reaches `Task.WhenAny(more, deadline)` only through a thread-pool work item. When the pool is busy, the deadline wins and the loop `break`s **without a final `Drain`**. Changes written before `Advance` then go into the *next* batch.
+
+In production this only delays an update by one flush (harmless). The test assumes, without waiting for it, that everything written before `Advance` is in that flush. Its `WaitUntilAsync(() => pump.IsCollecting)` returns at once, because the pump is usually already collecting.
+
+**Deterministic repro:** `TesterFeedPumpRaceTests` (skipped, FLAKY-01). It holds the pool's workers for a moment, writes one change, then calls `Advance`. 5/5 runs fail with *"after dispatch 1 the feed has [00D09E-EARLY]; LATE missed the flush"*.
+
+**Fixes:**
+- **Proposed fix (src, for CoderBot):** one line, `Drain(reader, pending, ref cleared);` after the collect loop and before `flushCts.CancelAsync()`. In a throwaway worktree (deleted afterwards) the repro and all 8 FeedPump tests passed 5/5 with it, and `CI=true` built Presentation with 0 warnings.
+- **Alternative (test only):** before each `time.Advance`, wait for `store.Changes.Count == 0` (the bounded channel can count).
+
+### 12.5 Windows smoke checklist additions (after W-1…W-30)
+
+| # | Step | Expected |
+|---|---|---|
+| W-31 | Proxy to an ACS whose `Set-Cookie` has `Domain=` and `Path=/tr069`, CPE posts to `/acs`. Select the InformResponse exchange → **Summary** | A **Proxy notes** heading with bullets `• Set-Cookie Domain stripped` and `• Set-Cookie Path /tr069 rewritten to / (CPE posts to /acs)`. On an exchange without notes, no heading and no empty gap |
+| W-32 | Digest through the proxy (401 → retry) → exchange 1 **Summary** | `• AuthChallenge` in the notes list; long notes wrap in a narrow detail pane |
+| W-33 | Select a **simulator** session's exchanges → Summary | No "Proxy notes" heading |
+| W-34 | Hand-edit `settings.json`: `proxy.tls` = IgnoreErrors + pins + `customCaPath`, `maxRequestBodyBytes` = 2000000. Start the app → Settings → **Restore defaults** → **Save** → close → reopen `settings.json` | `tls` and `maxRequestBodyBytes` are unchanged. Port/upstream/capture are back to defaults. The Proxy tab TLS drop-down still shows IgnoreErrors (DF-02) |
+| W-35 | Settings → Restore defaults → **Cancel** | Fields show the previous values again; nothing is written |
+| W-36 | `proxy.tls.mode` = `CustomCa` with `customCaPath` null → ▶ Start | Error banner *TLS mode CustomCa needs proxy.tls.customCaPath in settings.json.* |
+| W-37 | Simulator → an ACS that answers the Inform with HTTP 500 + SOAP Fault, while the proxy is in between | Both feeds show **⚠ ACS fault**; the simulator note is `ACS fault <code> <string>`; Running CPEs row `Error`, Retry 1 |
+
+### 12.6 Verdict
+
+**`fix/doc-findings` (b8d33bb): PASS.** Merge it together with, or before, a docs update; see the list in 12.3. FLAKY-01 is pre-existing and doesn't block. A one-line src fix is proposed.
