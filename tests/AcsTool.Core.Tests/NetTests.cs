@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using AcsTool.Core.Net;
+using AcsTool.Testing;
 
 namespace AcsTool.Core.Tests;
 
@@ -179,10 +180,19 @@ public class LiveNetworkClassificationTests
     public async Task Connect_UnroutableAddress_ConnectTimedOut()
     {
         Skip.If(Environment.GetEnvironmentVariable("ACSTOOL_SKIP_NET_TIMEOUT") == "1", "ACSTOOL_SKIP_NET_TIMEOUT=1 (plan §5.1)"); // BUG-03
-        var r = await Send("http://10.255.255.1:7547/acs", TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(10));
+        // Connect timeout 500 ms, request timeout 10 s. Upper bound 5 s: well above 500 ms plus a cold handler, and below the
+        // 10 s request timeout, so a missing or inflated connect timeout fails here. The 30 s guard turns a hang into a failure.
+        var (r, elapsed) = await TestUtil.TimedAsync(
+            () => Send("http://10.255.255.1:7547/acs", TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(10)), TimeSpan.FromSeconds(30));
         Assert.Equal(UpstreamErrorKind.Connect, r.Error!.Kind);
         // Some sandboxes reject unroutable addresses immediately (NetworkUnreachable) instead of timing out.
         Assert.Contains(r.Error.SocketError, new[] { "TimedOut", "NetworkUnreachable", "HostUnreachable" });
+        Assert.True(elapsed < TimeSpan.FromSeconds(5), $"connect failure took {elapsed}");
+        if (r.Error.SocketError == "TimedOut")
+        {
+            // Lower bound only for a real timeout: the connect timeout must not fire early (400 ms allows timer granularity).
+            Assert.True(elapsed >= TimeSpan.FromMilliseconds(400), $"connect timed out after only {elapsed}");
+        }
     }
 
     [Fact]
@@ -197,9 +207,13 @@ public class LiveNetworkClassificationTests
             // 3 s, not 500 ms: on a cold CI runner (coverage instrumentation, parallel test classes) the first request through
             // a new handler can spend >500 ms before it reaches the connect callback, so the timeout fired while the phase was
             // still Dns (FLAKY-02, linux run 40860632752). The asserts are unchanged; the server still never responds.
-            var r = await Send($"http://127.0.0.1:{port}/acs", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(3));
+            // Bounds for the 3 s request timeout: at least 2.5 s (it doesn't fire early) and at most 20 s (a 60 s or missing
+            // timeout fails; 20 s leaves room for a slow runner). The 30 s guard fails a removed timeout instead of hanging.
+            var (r, elapsed) = await TestUtil.TimedAsync(
+                () => Send($"http://127.0.0.1:{port}/acs", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(3)), TimeSpan.FromSeconds(30));
             Assert.Equal(UpstreamErrorKind.Timeout, r.Error!.Kind);
             Assert.Equal(RequestPhase.AwaitingResponse, r.Error.Phase);
+            Assert.InRange(elapsed, TimeSpan.FromSeconds(2.5), TimeSpan.FromSeconds(20));
             (await accept).Dispose();
         }
         finally

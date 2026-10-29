@@ -189,8 +189,12 @@ public class ForwardingTests
         await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s.ExpectInform().Delay(TimeSpan.FromSeconds(4)).RespondInformResponse());
         await using var h = await ProxyHarness.StartAsync(acs, s => s with { RequestTimeoutSeconds = 1 });
         using var client = ProxyHarness.CpeClient();
-        using var r = await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()));
+        var (r, elapsed) = await TestUtil.TimedAsync(() => client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform())), TimeSpan.FromSeconds(30));
+        using var _ = r;
         Assert.Equal(HttpStatusCode.GatewayTimeout, r.StatusCode);
+        // The 1 s request timeout ends the exchange in [0.8 s, 3.5 s]; the upper bound stays below the
+        // FakeAcs 4 s delay, so a timeout that is inflated, or missing, can't pass by waiting for the answer.
+        Assert.InRange(elapsed, TimeSpan.FromSeconds(0.8), TimeSpan.FromSeconds(3.5));
         var err = (await h.WaitForEndedAsync()).Exchanges.Single().Error!;
         Assert.Equal(UpstreamErrorKind.Timeout, err.Kind);
         Assert.Equal(RequestPhase.AwaitingResponse, err.Phase);
