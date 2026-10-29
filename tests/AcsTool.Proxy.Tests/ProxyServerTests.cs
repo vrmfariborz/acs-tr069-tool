@@ -87,6 +87,16 @@ public class ProxyServerTests
     }
 
     [Fact]
+    public async Task Start_CustomCaFileMissing_ProxyStartExceptionWithClearMessage()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        var missing = Path.Combine(Path.GetTempPath(), "acstool-missing-" + Guid.NewGuid().ToString("N") + ".pem");
+        var ex = await Assert.ThrowsAsync<ProxyStartException>(() => ProxyHarness.StartAsync(acs,
+            s => s with { Tls = AcsTool.Core.Net.TlsOptions.Default with { Mode = AcsTool.Core.Net.TlsValidationMode.CustomCa, CustomCaPath = missing } }));
+        Assert.Contains("could not be loaded", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Start_InvalidBindAddress_AddressNotAvailable()
     {
         await using var acs = await FakeAcs.StartAsync();

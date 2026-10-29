@@ -30,6 +30,7 @@ public sealed class CpeSessionTracker : IAsyncDisposable
     private readonly Dictionary<string, List<ProxySession>> _byIp = new(StringComparer.Ordinal);
     private readonly List<ProxySession> _active = [];
     private ITimer? _sweeper;
+    private System.Security.Cryptography.X509Certificates.X509Certificate2? _customCa;
 
     public CpeSessionTracker(ProxySettings settings, IUpstreamHandlerFactory handlers, ISessionSink sink, TimeProvider time, ILogger<CpeSessionTracker> log)
     {
@@ -46,6 +47,43 @@ public sealed class CpeSessionTracker : IAsyncDisposable
     }
 
     public TimeSpan IdleTimeout => TimeSpan.FromSeconds(Math.Max(1, _settings.SessionIdleTimeoutSeconds));
+
+    /// <summary>Loads TLS material once per proxy start (custom CA); fails the start with a clear message (review m12).</summary>
+    public void PrepareTls()
+    {
+        var tls = _settings.Tls ?? TlsOptions.Default;
+        if (tls.Mode != TlsValidationMode.CustomCa)
+        {
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(tls.CustomCaPath))
+        {
+            throw new ProxyStartException("TLS mode CustomCa needs a CA certificate file (Settings → TLS).");
+        }
+        try
+        {
+            var ca = TlsValidatorFactory.LoadCertificate(tls.CustomCaPath);
+            lock (_lock)
+            {
+                _customCa?.Dispose();
+                _customCa = ca;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.Cryptography.CryptographicException)
+        {
+            throw new ProxyStartException($"Custom CA file '{tls.CustomCaPath}' could not be loaded: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>Disposes TLS material loaded by <see cref="PrepareTls"/> (call after all sessions ended).</summary>
+    public void ReleaseTls()
+    {
+        lock (_lock)
+        {
+            _customCa?.Dispose();
+            _customCa = null;
+        }
+    }
 
     public void StartSweeper()
     {
@@ -172,7 +210,10 @@ public sealed class CpeSessionTracker : IAsyncDisposable
         ProxySession? session = null;
         var handler = _handlers.Create(
             new UpstreamHandlerOptions(TimeSpan.FromSeconds(Math.Max(1, _settings.ConnectTimeoutSeconds)), _settings.Tls ?? TlsOptions.Default,
-                UseCookies: managed, cookies, Credentials: null, AllowAutoRedirect: false, _settings.UseSystemProxy),
+                UseCookies: managed, cookies, Credentials: null, AllowAutoRedirect: false, _settings.UseSystemProxy)
+            {
+                PreloadedCustomCa = _customCa,
+            },
             () => tracker,
             tls =>
             {
@@ -362,6 +403,21 @@ public sealed class CpeSessionTracker : IAsyncDisposable
 
     internal void Sweep()
     {
+        // Timer callback: an exception here would crash the process (NFR-07; review m12).
+        try
+        {
+            SweepCore();
+        }
+#pragma warning disable CA1031
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _log.LogError(1003, ex, "Session sweep failed");
+        }
+    }
+
+    private void SweepCore()
+    {
         var now = _time.GetUtcNow();
         lock (_lock)
         {
@@ -387,5 +443,6 @@ public sealed class CpeSessionTracker : IAsyncDisposable
     {
         StopSweeper();
         await EndAllAsync(SessionOutcome.Canceled).ConfigureAwait(false);
+        ReleaseTls();
     }
 }

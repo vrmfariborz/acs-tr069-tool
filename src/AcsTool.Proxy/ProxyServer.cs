@@ -69,6 +69,7 @@ public sealed class ProxyServer : IAsyncDisposable
             WebApplication? app = null;
             try
             {
+                _tracker.PrepareTls();
                 app = Build(ip);
                 await app.StartAsync(ct).ConfigureAwait(false);
             }
@@ -81,6 +82,7 @@ public sealed class ProxyServer : IAsyncDisposable
                 }
                 _stopping.Dispose();
                 _stopping = null;
+                _tracker.ReleaseTls();
                 SetState(ProxyState.Faulted);
                 if (ex is IOException or SocketException or AddressInUseException or InvalidOperationException or UnauthorizedAccessException)
                 {
@@ -142,6 +144,7 @@ public sealed class ProxyServer : IAsyncDisposable
             _stopping = null;
             _tracker.StopSweeper();
             await _tracker.EndAllAsync(SessionOutcome.Canceled).ConfigureAwait(false);
+            _tracker.ReleaseTls();
             BoundUrls = [];
             SetState(ProxyState.Stopped);
         }

@@ -193,6 +193,28 @@ public class TrackerTests
         Assert.Equal(SessionOutcome.Completed, CpeSessionTracker.EvaluateEnd(s, CwmpMessageKind.Empty, Resp(204), null, []));
     }
 
+    private sealed class EndThrowsSink(ISessionSink inner) : ISessionSink
+    {
+        public Guid StartSession(SessionStart start) => inner.StartSession(start);
+        public int AddExchange(Guid sessionId, HttpMessageCapture request, MessageSummary summary, DateTimeOffset started) => inner.AddExchange(sessionId, request, summary, started);
+        public void CompleteExchange(Guid sessionId, int seq, HttpMessageCapture? response, MessageSummary? summary, UpstreamError? error,
+            ExchangeTimings timings, IReadOnlyList<string>? notes = null) => inner.CompleteExchange(sessionId, seq, response, summary, error, timings, notes);
+        public void UpdateSession(Guid sessionId, Func<SessionSnapshot, SessionSnapshot> patch) => inner.UpdateSession(sessionId, patch);
+        public void EndSession(Guid sessionId, SessionOutcome outcome) => throw new InvalidOperationException("sink exploded");
+    }
+
+    [Fact]
+    public void Sweep_SinkThrows_DoesNotEscapeTimerCallback()
+    {
+        var tracker = new CpeSessionTracker(new ProxySettings(), new UpstreamHandlerFactory(), new EndThrowsSink(_store), _time, NullLogger<CpeSessionTracker>.Instance);
+        tracker.StartSweeper();
+        var req = new IncomingRequest("POST", "/acs", [], InformA, "192.168.1.50", 50000, "c1", false);
+        var parsed = _parser.Parse(InformA);
+        tracker.Resolve(req, parsed, _summ.Summarize(parsed));
+        _time.Advance(TimeSpan.FromSeconds(31)); // idle → sweep → EndSession throws inside the timer callback
+        tracker.Sweep();
+    }
+
     [Fact]
     public void Sweeper_AwaitingFinalEmpty_CompletesAfterGrace()
     {

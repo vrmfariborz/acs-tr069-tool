@@ -115,6 +115,27 @@ public class ProxyViewModelTests
     }
 
     [Fact]
+    public async Task StartFailsWithNonBindError_FaultedWithBanner_ButtonUsable()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        await using var h = AppHarness.Create(holder => holder.Current = holder.Current with
+        {
+            Proxy = holder.Current.Proxy with
+            {
+                Tls = AcsTool.Core.Net.TlsOptions.Default with { Mode = AcsTool.Core.Net.TlsValidationMode.CustomCa, CustomCaPath = "/nonexistent/ca.pem" },
+            },
+        });
+        var vm = h.Get<ProxyViewModel>();
+        vm.BindAddress = "127.0.0.1";
+        vm.Port = AppHarness.FreePort();
+        vm.UpstreamUrl = acs.BaseUri.ToString();
+        Assert.False(await vm.StartAsync());
+        Assert.Equal(AcsTool.Proxy.ProxyState.Faulted, vm.State);
+        Assert.Contains(h.Get<IBannerService>().Banners, b => b.Key == ProxyViewModel.BindBannerKey && b.Text.Contains("Custom CA", StringComparison.Ordinal));
+        Assert.True(vm.StartStopCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task UpstreamWithCredentials_RejectedWithClearMessage()
     {
         await using var h = AppHarness.Create();
