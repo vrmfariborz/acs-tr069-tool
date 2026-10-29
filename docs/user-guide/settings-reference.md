@@ -174,7 +174,7 @@ The capture settings bound how much the in-memory session store keeps. The store
 
 ## Restore defaults
 
-**Restore defaults** in the Settings window resets the fields shown on its Proxy and Capture pages to their defaults (not saved until **Save**). Settings the window doesn't show are kept: `proxy.tls` (TLS mode, pins, CA path), `proxy.maxRequestBodyBytes`, and the `simulator`, `ui` and `logging` sections.
+**Restore defaults** in the Settings window resets the fields shown on its Proxy and Capture pages to their defaults (not saved until **Save**). Settings the window doesn't show are kept: the whole `proxy.tls` section (including the TLS mode, so e.g. IgnoreErrors stays on, plus pins and CA path), `proxy.maxRequestBodyBytes`, and the `simulator`, `ui` and `logging` sections.
 
 ## Corrupt or missing settings file
 

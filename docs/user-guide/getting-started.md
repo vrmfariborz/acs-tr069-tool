@@ -41,8 +41,8 @@ Set-ExecutionPolicy -Scope Process Bypass   # only for this PowerShell window
 `build.ps1` does three things, and stops at the first failure:
 
 1. `dotnet restore AcsTool.sln`
-2. `dotnet build AcsTool.sln -c Release`
-3. `dotnet test` for all test projects, skipping performance tests (`Category=Perf`) and collecting code coverage into `TestResults\`.
+2. `dotnet build AcsTool.sln -c Release --no-restore`
+3. `dotnet test AcsTool.sln -c Release --no-build`, skipping performance tests (`Category=Perf`) and collecting code coverage into `TestResults\`.
 
 Options: `.\build.ps1 -NoCoverage` (faster) and `.\build.ps1 -IncludePerf` (also runs the parser performance test).
 
@@ -71,7 +71,7 @@ Other ways to start it:
 | `dotnet run --project src\AcsTool.App -c Release` | Run from source without publishing (needs the SDK). |
 | `Start-Process .\out\win-x64\AcsTool.exe -ArgumentList '--smoke-exit' -Wait -PassThru \| % ExitCode` | Smoke test: starts the app without showing the window, loads settings and profiles, shuts down cleanly and exits. `0` means OK, `1` means startup failed. Like every normal exit, it also writes `settings.json`. CI uses this. |
 
-`--smoke-exit` is the only command-line option the app understands.
+`--smoke-exit` is the app's only own command-line option. The arguments are also handed to the .NET generic host, which parses them as configuration values (e.g. `--environment Development`); AcsTool itself doesn't read any of them.
 
 ## 6. First run: what you will see
 

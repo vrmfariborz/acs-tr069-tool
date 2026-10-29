@@ -65,7 +65,7 @@ There is no TLS page in the Settings window yet, so edit `settings.json` by hand
 
 1. **Close AcsTool.** The app saves its settings when it closes, which would overwrite your edit.
 2. Open `%APPDATA%\AcsTool\settings.json` in a text editor. (If it doesn't exist yet, start and close the app once, or click **Save** in the Settings window.)
-3. Replace `"tls": null` in the `proxy` section with one of:
+3. In the `proxy` section, set `"tls"` to one of the blocks below. In a fresh file it reads `"tls": null`. After the proxy has been started once it already holds an object (Start always stores the Proxy tab's TLS mode there); then replace that object, or edit its `mode` and the fields you need:
 
    ```jsonc
    // CustomCa: trust your private CA for the upstream ACS
@@ -105,7 +105,7 @@ $c = [Security.Cryptography.X509Certificates.X509Certificate2]::new('C:\certs\ac
 
 Known limitations of `CustomCa` in this version: only the **first** certificate of a PEM bundle is used, a PEM file saved with a UTF-8 BOM is rejected, and a password-protected PFX can't be used. See [roadmap.md](roadmap.md).
 
-**Restore defaults** in the Settings window keeps your hand-edited `tls` block (see [settings-reference.md](settings-reference.md#restore-defaults)).
+**Restore defaults** in the Settings window keeps the whole `tls` block, including the TLS mode (see [settings-reference.md](settings-reference.md#restore-defaults)).
 
 ## Authentication pass-through
 

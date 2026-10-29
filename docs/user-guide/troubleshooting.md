@@ -55,7 +55,7 @@ A body was larger than `proxy.maxRequestBodyBytes` (10 MiB). Raise it in `settin
 - PFX files must have no password.
 
 ### My pins or CA path disappeared
-The app writes its in-memory settings on exit, so edits made to `settings.json` while the app runs are overwritten. Edit with the app closed. (**Restore defaults** keeps `proxy.tls`; see [Restore defaults](settings-reference.md#restore-defaults).)
+The app writes its in-memory settings on exit, so edits made to `settings.json` while the app runs are overwritten. Edit with the app closed. (**Restore defaults** keeps the whole `proxy.tls` section, TLS mode included; see [Restore defaults](settings-reference.md#restore-defaults).)
 
 ## Simulator problems
 
@@ -100,6 +100,10 @@ When the ACS sends a SOAP Fault with a 2xx status later in a session (not to the
 
 ### `403` to the Inform: *HTTP error* in the simulator, *Auth failed* in the proxy
 A plain `403` (no SOAP Fault) ends the simulator session as **⚠ HTTP error**; the proxy reports **🔒 Auth failed**. A `403` that carries a SOAP Fault is **⚠ ACS fault** on both sides.
+
+### Low-impact quirks (simulator)
+- **`ACS fault 0` note.** When the ACS answers the Inform with a plain SOAP Fault that has no CWMP `detail`, the simulator's session note reads `ACS fault 0 ` (code 0, no text). The SOAP `faultcode` and `faultstring` are parsed: see the exchange's Summary tab or the Raw tab.
+- **TransferComplete ignores the HTTP status.** If the ACS answers a simulator TransferComplete with a 401 or 500, the CPE only notes *TransferComplete not acknowledged (…); kept pending* and continues with its empty POST. The simulator doesn't send TransferComplete yet (no Download follow-ups before M7), so you won't see this today.
 
 ---
 

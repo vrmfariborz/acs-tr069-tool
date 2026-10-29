@@ -111,10 +111,10 @@ All time-dependent code takes a `TimeProvider`, so tests use `FakeTimeProvider` 
 
 ## Tests
 
-- **xUnit** projects for Core, Proxy, Simulator and Presentation, run on Linux and Windows. With the doc-review fixes (fix/doc-findings, b8d33bb): 556 tests, **553 passed, 3 skipped** on Linux (on Windows the DNS test runs too: 554 passed, 2 skipped).
+- **xUnit** projects for Core, Proxy, Simulator and Presentation, run on Linux and Windows. With the doc-review fixes and TesterBot's probes (fix/doc-findings + tester/doc-findings): 584 tests, **580 passed, 4 skipped** on Linux.
 - **`FakeAcs`** (`tests/AcsTool.Testing`) is a scriptable in-process ACS used by proxy and simulator tests; `AcsTool.Simulator.Tests` also runs simulator → proxy → FakeAcs end to end.
 - **Fixtures** in `tests/fixtures/` cover CWMP 1.0–1.2 Informs, odd namespaces, faults and RPCs.
-- **Skipped tests**: two documented known issues with CustomCa (UTF-8 BOM PEM, multi-certificate PEM: `NET10-01`, `NET10-02`) and a DNS test that skips when the resolver answers for `nonexistent.invalid`. The unroutable-connect timeout test can be skipped locally with `ACSTOOL_SKIP_NET_TIMEOUT=1`; the build scripts refuse that in CI.
+- **Skipped tests**: two documented known issues with CustomCa (UTF-8 BOM PEM, multi-certificate PEM: `NET10-01`, `NET10-02`) a DNS test that skips when the resolver answers for `nonexistent.invalid`, and a deterministic repro of a feed-pump test flake (`FLAKY-01`, see `docs/TEST_REPORT_M0-M4.md` §12.4). The unroutable-connect timeout test can be skipped locally with `ACSTOOL_SKIP_NET_TIMEOUT=1`; the build scripts refuse that in CI.
 - **Perf** tests (`[Trait("Category","Perf")]`) are excluded by default; `./build.sh --include-perf` runs them.
 
 ## Build and CI

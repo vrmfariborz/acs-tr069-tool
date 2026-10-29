@@ -23,6 +23,11 @@ Two cases are classified differently by the simulator and the proxy (see [troubl
 - A SOAP Fault with a 2xx status later in a session: the simulator will end the session **⚠ ACS fault**, like the proxy, instead of **✔ Completed**.
 - A `403` to the Inform: the simulator will report **🔒 Auth failed**, like the proxy, instead of **⚠ HTTP error**.
 
+Low-priority simulator follow-ups:
+
+- The `ACS fault` note will use the SOAP `faultcode`/`faultstring` when the Fault has no CWMP detail, instead of `ACS fault 0 `.
+- TransferComplete will honor the HTTP status (401/500) once TransferComplete is sent (with the M7 follow-ups).
+
 ## Auth and cookies follow-ups
 
 - A late trailing empty POST (or an empty POST after a Fault) currently shows up as an extra orphan row (m2).

@@ -48,7 +48,7 @@ There is no import, duplicate or rename-file function; the file name is the prof
 | Field | Rule | Error text |
 |---|---|---|
 | Name | not empty | `Name: Name is required` |
-| OUI | 6 upper-case hex digits | `DeviceId.OUI: OUI must be 6 upper-case hex digits (e.g. 00D09E)` |
+| OUI | 6 hex digits (the editor upper-cases what you type, and again when building the profile, so this only fails for non-hex characters or the wrong length) | `DeviceId.OUI: OUI must be 6 upper-case hex digits (e.g. 00D09E)` |
 | Serial | not empty | `DeviceId.SerialNumber: Serial number is required` |
 | Manufacturer | not empty, unless ProductClass is set | `DeviceId.Manufacturer: Manufacturer is required` |
 | ACS URL | absolute `http://` or `https://` | `AcsUrl: ACS URL must be an absolute http:// or https:// URL` |
