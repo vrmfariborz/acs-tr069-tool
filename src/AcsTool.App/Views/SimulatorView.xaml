@@ -85,7 +85,8 @@
               <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
               <Label Grid.Row="1" Grid.Column="2" Content="Password" />
               <StackPanel Grid.Row="1" Grid.Column="3">
-                <PasswordBox v:PasswordBoxAssistant.BoundPassword="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                <PasswordBox v:PasswordBoxAssistant.Attach="True"
+                             v:PasswordBoxAssistant.BoundPassword="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Stored with DPAPI (current Windows user)" />
                 <TextBlock Foreground="DarkRed" TextWrapping="Wrap" Text="Stored password could not be decrypted for this Windows user; re-enter it."
                            Visibility="{Binding PasswordUnreadable, Converter={StaticResource BoolToVisibility}}" />

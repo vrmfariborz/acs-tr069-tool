@@ -1,73 +1,68 @@
 using System.Windows;
 using System.Windows.Controls;
+using AcsTool.Presentation.Abstractions;
 
 namespace AcsTool.App.Views;
 
 /// <summary>
-/// Two-way binding for <see cref="PasswordBox.Password"/> (not a dependency property). Values pushed from the view model
-/// (profile load) are written to the box without echoing back; only user typing updates the source (review m9).
+/// Two-way binding for <see cref="PasswordBox.Password"/>. Use both properties:
+/// <c>v:PasswordBoxAssistant.Attach="True"</c> wires PasswordChanged regardless of the bound value (review R2-M1), and
+/// <c>v:PasswordBoxAssistant.BoundPassword="{Binding Password}"</c> carries the value. The echo logic is in <see cref="PasswordSync"/>.
 /// </summary>
 public static class PasswordBoxAssistant
 {
+    public static readonly DependencyProperty AttachProperty = DependencyProperty.RegisterAttached(
+        "Attach", typeof(bool), typeof(PasswordBoxAssistant), new PropertyMetadata(false, OnAttachChanged));
+
     public static readonly DependencyProperty BoundPasswordProperty = DependencyProperty.RegisterAttached(
         "BoundPassword", typeof(string), typeof(PasswordBoxAssistant),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnBoundPasswordChanged));
 
-    private static readonly DependencyProperty UpdatingProperty = DependencyProperty.RegisterAttached(
-        "Updating", typeof(bool), typeof(PasswordBoxAssistant), new PropertyMetadata(false));
+    private static readonly DependencyProperty SyncProperty = DependencyProperty.RegisterAttached(
+        "Sync", typeof(PasswordSync), typeof(PasswordBoxAssistant), new PropertyMetadata(null));
 
-    private static readonly DependencyProperty AttachedProperty = DependencyProperty.RegisterAttached(
-        "Attached", typeof(bool), typeof(PasswordBoxAssistant), new PropertyMetadata(false));
+    public static bool GetAttach(DependencyObject d) => (bool)d.GetValue(AttachProperty);
+
+    public static void SetAttach(DependencyObject d, bool value) => d.SetValue(AttachProperty, value);
 
     public static string? GetBoundPassword(DependencyObject d) => (string?)d.GetValue(BoundPasswordProperty);
 
     public static void SetBoundPassword(DependencyObject d, string? value) => d.SetValue(BoundPasswordProperty, value);
 
-    private static void OnBoundPasswordChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static PasswordSync SyncOf(PasswordBox box)
+    {
+        if (box.GetValue(SyncProperty) is not PasswordSync sync)
+        {
+            sync = new PasswordSync();
+            box.SetValue(SyncProperty, sync);
+        }
+        return sync;
+    }
+
+    private static void OnAttachChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is not PasswordBox box)
         {
             return;
         }
-        if (!(bool)box.GetValue(AttachedProperty))
+        box.PasswordChanged -= OnPasswordChanged; // never subscribe twice
+        if ((bool)e.NewValue)
         {
-            box.SetValue(AttachedProperty, true);
             box.PasswordChanged += OnPasswordChanged;
         }
-        if ((bool)box.GetValue(UpdatingProperty))
+    }
+
+    private static void OnBoundPasswordChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is PasswordBox box)
         {
-            return;
-        }
-        var value = (string?)e.NewValue ?? string.Empty;
-        if (box.Password != value)
-        {
-            box.SetValue(UpdatingProperty, true);
-            try
-            {
-                box.Password = value; // raises PasswordChanged, ignored while Updating
-            }
-            finally
-            {
-                box.SetValue(UpdatingProperty, false);
-            }
+            SyncOf(box).SourceChanged((string?)e.NewValue, box.Password, text => box.Password = text);
         }
     }
 
     private static void OnPasswordChanged(object sender, RoutedEventArgs e)
     {
         var box = (PasswordBox)sender;
-        if ((bool)box.GetValue(UpdatingProperty))
-        {
-            return;
-        }
-        box.SetValue(UpdatingProperty, true);
-        try
-        {
-            SetBoundPassword(box, box.Password);
-        }
-        finally
-        {
-            box.SetValue(UpdatingProperty, false);
-        }
+        SyncOf(box).BoxChanged(box.Password, text => SetBoundPassword(box, text));
     }
 }

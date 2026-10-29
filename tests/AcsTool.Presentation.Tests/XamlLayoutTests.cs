@@ -90,6 +90,8 @@ public class XamlLayoutTests
         Assert.DoesNotContain(sim.Descendants(Wpf + "TextBox"), t => ((string?)t.Attribute("Text") ?? "").Contains("Password", StringComparison.Ordinal));
         var box = Assert.Single(sim.Descendants(Wpf + "PasswordBox"));
         Assert.Contains(box.Attributes(), a => a.Name.LocalName == "PasswordBoxAssistant.BoundPassword" && a.Value.Contains("Binding Password", StringComparison.Ordinal));
+        // Review R2-M1: PasswordChanged must be wired independently of the bound value (null for profiles without a password).
+        Assert.Contains(box.Attributes(), a => a.Name.LocalName == "PasswordBoxAssistant.Attach" && a.Value == "True");
     }
 
     [Fact]
