@@ -29,7 +29,7 @@ public sealed partial class MainViewModel : ObservableObject, IFeedBatchConsumer
     [ObservableProperty] private int _selectedTabIndex;
 
     public MainViewModel(ProxyViewModel proxy, SimulatorViewModel simulator, SettingsViewModel settingsVm, IBannerService banners,
-        ISessionStore store, ISettingsStore settingsStore, SettingsHolder settings, SessionFeedPump pump, ILogger<MainViewModel> log)
+        ISessionStore store, ISettingsStore settingsStore, SettingsHolder settings, SessionFeedPump pump, IUiDispatcher dispatcher, ILogger<MainViewModel> log)
     {
         Proxy = proxy;
         Simulator = simulator;
@@ -39,10 +39,12 @@ public sealed partial class MainViewModel : ObservableObject, IFeedBatchConsumer
         _settingsStore = settingsStore;
         _settings = settings;
         _pump = pump;
+        ArgumentNullException.ThrowIfNull(dispatcher);
         _log = log;
         _pump.Subscribe(proxy.Feed);
         _pump.Subscribe(simulator.Feed);
         _pump.Subscribe(this);
+        settings.Changed += (_, _) => _ = dispatcher.InvokeAsync(ApplyUiSettings);
         proxy.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ProxyViewModel.State))
@@ -73,9 +75,11 @@ public sealed partial class MainViewModel : ObservableObject, IFeedBatchConsumer
             Banners.Show(BannerKind.Warning, problem, "settings-load");
         }
         Settings.LoadFrom(_settings.Current);
-        var capture = _settings.Current.Capture;
-        Proxy.Feed.MaxItems = Simulator.Feed.MaxItems = capture.MaxFeedItems;
-        Proxy.Feed.NewestOnTop = Simulator.Feed.NewestOnTop = _settings.Current.Ui.NewestOnTop;
+        if (Proxy.CanEdit)
+        {
+            Proxy.LoadFrom(_settings.Current.Proxy);
+        }
+        ApplyUiSettings();
         _pump.Start();
         await Simulator.LoadAsync(ct);
         Banners.Show(BannerKind.Info, "Windows Firewall may prompt; allow Private networks so modems can reach the proxy.", "firewall-hint");
@@ -83,6 +87,15 @@ public sealed partial class MainViewModel : ObservableObject, IFeedBatchConsumer
         {
             await Proxy.StartAsync();
         }
+        RefreshStatus();
+    }
+
+    /// <summary>Applies feed limits/ordering from the current settings (after load and after every Settings save).</summary>
+    private void ApplyUiSettings()
+    {
+        var current = _settings.Current;
+        Proxy.Feed.MaxItems = Simulator.Feed.MaxItems = current.Capture.MaxFeedItems;
+        Proxy.Feed.NewestOnTop = Simulator.Feed.NewestOnTop = current.Ui.NewestOnTop;
         RefreshStatus();
     }
 

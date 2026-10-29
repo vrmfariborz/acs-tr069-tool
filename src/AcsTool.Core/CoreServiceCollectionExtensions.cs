@@ -25,7 +25,14 @@ public static class CoreServiceCollectionExtensions
         services.TryAddSingleton<IXmlFormatter, XmlPretty>();
         services.TryAddSingleton<ISecretProtector, PlainSecretProtector>();
         services.TryAddSingleton<ISettingsStore, JsonSettingsStore>();
-        services.TryAddSingleton(sp => new InMemorySessionStore(sp.GetRequiredService<SettingsHolder>().Current.Capture, sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton(sp =>
+        {
+            var holder = sp.GetRequiredService<SettingsHolder>();
+            var store = new InMemorySessionStore(holder.Current.Capture, sp.GetRequiredService<TimeProvider>());
+            // Limits follow the settings (loaded after the store may have been resolved, or edited in the Settings window).
+            holder.Changed += (_, _) => store.UpdateLimits(holder.Current.Capture);
+            return store;
+        });
         services.TryAddSingleton<ISessionStore>(sp => sp.GetRequiredService<InMemorySessionStore>());
         services.TryAddSingleton<ISessionSink>(sp => sp.GetRequiredService<InMemorySessionStore>());
         return services;

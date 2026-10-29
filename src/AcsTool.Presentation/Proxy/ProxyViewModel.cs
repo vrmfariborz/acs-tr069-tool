@@ -76,6 +76,26 @@ public sealed partial class ProxyViewModel : ObservableValidator, IAsyncDisposab
         _tlsMode = (p.Tls ?? TlsOptions.Default).Mode;
         _cookieMode = p.CookieMode;
         ValidateAllProperties();
+        // Settings may be loaded (or edited in the Settings window) after this VM was created: follow them while the proxy is stopped.
+        settings.Changed += (_, _) => _ = _dispatcher.InvokeAsync(() =>
+        {
+            if (CanEdit && _server is null)
+            {
+                LoadFrom(_settings.Current.Proxy);
+            }
+        });
+    }
+
+    /// <summary>Copies persisted proxy settings into the editable fields (only meaningful while stopped).</summary>
+    public void LoadFrom(ProxySettings p)
+    {
+        ArgumentNullException.ThrowIfNull(p);
+        BindAddress = p.BindAddress;
+        Port = p.Port;
+        UpstreamUrl = p.UpstreamUrl;
+        TlsMode = (p.Tls ?? TlsOptions.Default).Mode;
+        CookieMode = p.CookieMode;
+        ValidateAllProperties();
     }
 
     public SessionFeedViewModel Feed { get; }

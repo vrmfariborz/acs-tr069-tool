@@ -292,4 +292,68 @@ public class MainAndSettingsTests
         Assert.Equal(7547, h.Get<SettingsHolder>().Current.Proxy.Port);
         await main.ShutdownAsync();
     }
+
+    [Fact]
+    public async Task PersistedSettings_ReachProxyVmStoreFeedAndEngine_StartKeepsThem()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        await using var h = AppHarness.Create();
+        var port = AppHarness.FreePort();
+        var persisted = AppSettings.Default with
+        {
+            Proxy = AppSettings.Default.Proxy with { BindAddress = "127.0.0.1", Port = port, UpstreamUrl = acs.BaseUri.ToString(), CookieMode = CookieMode.ManagedPerCpe },
+            Capture = AppSettings.Default.Capture with { MaxSessions = 10, MaxFeedItems = 50 },
+            Simulator = AppSettings.Default.Simulator with { MaxConcurrentSessions = 3 },
+        };
+        await h.Get<ISettingsStore>().SaveAsync(persisted, default);
+
+        // Same order as App.OnStartup: the view models (and the store/engine behind them) are resolved before settings load.
+        var main = h.Get<MainViewModel>();
+        await main.InitializeAsync();
+
+        Assert.Equal("127.0.0.1", main.Proxy.BindAddress);
+        Assert.Equal(port, main.Proxy.Port);
+        Assert.Equal(acs.BaseUri.ToString(), main.Proxy.UpstreamUrl);
+        Assert.Equal(CookieMode.ManagedPerCpe, main.Proxy.CookieMode);
+        Assert.Equal(50, main.Proxy.Feed.MaxItems);
+        Assert.Equal(50, main.Simulator.Feed.MaxItems);
+
+        var store = h.Get<InMemorySessionStore>();
+        Assert.Equal(10, store.Limits.MaxSessions);
+        for (var i = 0; i < 30; i++)
+        {
+            store.EndSession(Kit.StartSession(store, $"E{i}"), SessionOutcome.Completed);
+        }
+        Assert.Equal(10, store.Stats.Sessions);
+
+        var engine = h.Get<AcsTool.Simulator.Engine.SimulationEngine>();
+        await engine.StartProfileAsync(DefaultProfiles.Tr098() with { AcsUrl = acs.BaseUri + "acs" }, sendBootNow: false, default);
+        Assert.Equal(3, engine.MaxConcurrentSessions);
+        await engine.StopAllAsync();
+
+        Assert.True(await main.Proxy.StartAsync());
+        Assert.Equal(port, h.Get<SettingsHolder>().Current.Proxy.Port);
+        Assert.Equal(acs.BaseUri.ToString(), h.Get<SettingsHolder>().Current.Proxy.UpstreamUrl);
+        await main.ShutdownAsync();
+        var reloaded = await h.Get<ISettingsStore>().LoadAsync(default);
+        Assert.Equal(port, reloaded.Proxy.Port);
+        Assert.Equal(CookieMode.ManagedPerCpe, reloaded.Proxy.CookieMode);
+    }
+
+    [Fact]
+    public async Task SettingsWindowSave_WhileStopped_UpdatesProxyTabAndLimits()
+    {
+        await using var h = AppHarness.Create();
+        var main = h.Get<MainViewModel>();
+        await main.InitializeAsync();
+        var settingsVm = h.Get<SettingsViewModel>();
+        settingsVm.Port = 18123;
+        settingsVm.UpstreamUrl = "http://acs.changed:9000/acs";
+        settingsVm.MaxFeedItems = 150;
+        Assert.True(await settingsVm.SaveAsync());
+        Assert.Equal(18123, main.Proxy.Port);
+        Assert.Equal("http://acs.changed:9000/acs", main.Proxy.UpstreamUrl);
+        Assert.Equal(150, main.Proxy.Feed.MaxItems);
+        await main.ShutdownAsync();
+    }
 }

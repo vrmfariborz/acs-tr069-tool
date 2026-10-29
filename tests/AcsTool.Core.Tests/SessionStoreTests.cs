@@ -80,6 +80,23 @@ public class SessionStoreTests
     }
 
     [Fact]
+    public void UpdateLimits_Lowered_EvictsImmediatelyAndAppliesToLaterSessions()
+    {
+        var store = new InMemorySessionStore(new CaptureSettings(), TimeProvider.System);
+        for (var i = 0; i < 8; i++)
+        {
+            store.EndSession(store.StartSession(Start()), SessionOutcome.Completed);
+        }
+        Drain(store);
+        store.UpdateLimits(new CaptureSettings(MaxSessions: 3));
+        Assert.Equal(3, store.Stats.Sessions);
+        Assert.Equal(5, Drain(store).Count(c => c.Kind == SessionChangeKind.Removed));
+        store.EndSession(store.StartSession(Start()), SessionOutcome.Completed);
+        Assert.Equal(3, store.Stats.Sessions);
+        Assert.Equal(3, store.Limits.MaxSessions);
+    }
+
+    [Fact]
     public void Eviction_ByteBudget_KeepsActiveEvenIfOverBudget()
     {
         var store = new InMemorySessionStore(new CaptureSettings(CaptureBudgetBytes: 100), TimeProvider.System);

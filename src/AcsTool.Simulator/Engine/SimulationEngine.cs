@@ -21,7 +21,7 @@ public sealed partial class SimulationEngine : IAsyncDisposable
     private readonly ILogger<SimulationEngine> _log;
     private readonly object _lock = new();
     private readonly List<SimulatedCpe> _cpes = [];
-    private readonly SemaphoreSlim _gate;
+    private SemaphoreSlim _gate;
 
     public SimulationEngine(CpeServices services, SettingsHolder settings, ILogger<SimulationEngine> log)
     {
@@ -34,7 +34,11 @@ public sealed partial class SimulationEngine : IAsyncDisposable
         _gate = new SemaphoreSlim(MaxConcurrentSessions, MaxConcurrentSessions);
     }
 
-    public int MaxConcurrentSessions { get; }
+    /// <summary>
+    /// Size of the global session gate. Follows <c>SimulatorSettings.MaxConcurrentSessions</c>; a changed value takes effect
+    /// the next time a profile is started while no simulated CPE is running (running CPEs keep the gate they were given).
+    /// </summary>
+    public int MaxConcurrentSessions { get; private set; }
 
     public IReadOnlyList<SimulatedCpe> Cpes
     {
@@ -61,6 +65,13 @@ public sealed partial class SimulationEngine : IAsyncDisposable
         var started = new List<SimulatedCpe>();
         lock (_lock)
         {
+            var wanted = Math.Max(1, _settings.Current.Simulator.MaxConcurrentSessions);
+            if (_cpes.Count == 0 && wanted != MaxConcurrentSessions)
+            {
+                // The old gate is not disposed: a stopping CPE may still Release it (no wait handle was allocated).
+                MaxConcurrentSessions = wanted;
+                _gate = new SemaphoreSlim(wanted, wanted);
+            }
             foreach (var id in ids)
             {
                 if (_cpes.Any(c => c.DeviceKey == id.Key))

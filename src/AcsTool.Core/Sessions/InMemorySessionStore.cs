@@ -18,7 +18,7 @@ public sealed class InMemorySessionStore : ISessionStore
     private readonly Dictionary<Guid, LinkedListNode<SessionSnapshot>> _byId = [];
     private readonly LinkedList<SessionSnapshot> _ordered = new();
     private readonly Channel<SessionChange> _channel;
-    private readonly CaptureSettings _settings;
+    private CaptureSettings _settings;
     private readonly TimeProvider _time;
     private long _capturedBytes;
     private int _active;
@@ -55,6 +55,31 @@ public sealed class InMemorySessionStore : ISessionStore
                 return new CaptureStats(_byId.Count, _active, _capturedBytes, _evicted, Interlocked.Read(ref _dropped));
             }
         }
+    }
+
+    /// <summary>Current eviction limits (MaxSessions, CaptureBudgetBytes, ...).</summary>
+    public CaptureSettings Limits
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _settings;
+            }
+        }
+    }
+
+    /// <summary>Applies new capture limits at runtime (Settings window / settings load) and evicts down to them immediately.</summary>
+    public void UpdateLimits(CaptureSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        List<Guid> evicted;
+        lock (_gate)
+        {
+            _settings = settings;
+            evicted = EvictLocked();
+        }
+        NotifyRemoved(evicted);
     }
 
     public bool TryConsumeResync() => Interlocked.Exchange(ref _resync, 0) == 1;
