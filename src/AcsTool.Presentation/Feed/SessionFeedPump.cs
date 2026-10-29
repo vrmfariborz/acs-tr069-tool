@@ -152,6 +152,10 @@ public sealed class SessionFeedPump : IAsyncDisposable
             }
             Drain(reader, pending, ref cleared);
         }
+        // Changes written before the deadline fired belong in this flush. FakeTimeProvider.Advance (and a busy thread pool
+        // in general) can complete the deadline before the WaitToReadAsync continuation reaches Task.WhenAny, so the loop
+        // above may exit with items still in the channel; drain once more (FLAKY-01).
+        Drain(reader, pending, ref cleared);
         await flushCts.CancelAsync().ConfigureAwait(false);
         _collecting = false;
         await FlushAsync(pending, cleared).ConfigureAwait(false);
