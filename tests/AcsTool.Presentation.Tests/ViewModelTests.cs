@@ -28,16 +28,18 @@ public sealed class AppHarness : IAsyncDisposable
     public TempAppPaths Paths { get; }
     public T Get<T>() where T : notnull => Services.GetRequiredService<T>();
 
-    public static AppHarness Create(Action<SettingsHolder>? configure = null)
+    public static AppHarness Create(Action<SettingsHolder>? configure = null, Action<IServiceCollection>? services = null)
     {
         var paths = new TempAppPaths();
-        var services = new ServiceCollection()
+        var collection = new ServiceCollection();
+        services?.Invoke(collection);
+        var built = collection
             .AddLogging()
             .AddSingleton<IAppPaths>(paths)
             .AddSingleton<IUiDispatcher, SynchronousUiDispatcher>()
             .AddSingleton<IClipboardService, FakeClipboard>()
             .AddAcsToolPresentation();
-        var sp = services.BuildServiceProvider();
+        var sp = built.BuildServiceProvider();
         configure?.Invoke(sp.GetRequiredService<SettingsHolder>());
         return new AppHarness(sp, paths);
     }
@@ -357,3 +359,43 @@ public class MainAndSettingsTests
         await main.ShutdownAsync();
     }
 }
+
+/// <summary>Simulates DPAPI data protected by another Windows user: "dpapi:" values cannot be decrypted.</summary>
+public sealed class ForeignDpapiProtector : ISecretProtector
+{
+    public string Protect(string plain) => "plain:" + plain;
+
+    public string Unprotect(string stored) => stored.StartsWith("dpapi:", StringComparison.Ordinal)
+        ? throw new SecretUnprotectException("The stored password could not be decrypted for this Windows user; re-enter it.")
+        : stored.StartsWith("plain:", StringComparison.Ordinal) ? stored[6..] : stored;
+}
+
+public class SecretTests
+{
+    [Fact]
+    public async Task UndecryptablePassword_BannerShown_CiphertextKeptOnSave_StartRefused()
+    {
+        await using var h = AppHarness.Create(services: s => s.AddSingleton<ISecretProtector, ForeignDpapiProtector>());
+        var profiles = h.Get<IProfileStore>();
+        var original = DefaultProfiles.Tr098("Foreign", "SIMF0001") with { Username = "cpe", PasswordProtected = "dpapi:AAAA" };
+        await profiles.SaveAsync(original, default);
+
+        var sim = h.Get<SimulatorViewModel>();
+        await sim.LoadAsync();
+        var editor = Assert.Single(sim.Profiles);
+        Assert.True(editor.PasswordUnreadable);
+        Assert.Null(editor.Password);
+        Assert.Contains(h.Get<IBannerService>().Banners, b => b.Key == SimulatorViewModel.PasswordBannerKey && b.Kind == BannerKind.Warning);
+
+        editor.Name = "Foreign (renamed)";
+        Assert.Equal("dpapi:AAAA", editor.ToProfile().PasswordProtected); // not wiped by an unrelated edit
+
+        Assert.False(await sim.StartSelectedAsync(sendBootNow: false));
+        Assert.Contains(h.Get<IBannerService>().Banners, b => b.Key == "sim-start" && b.Text.Contains("re-enter", StringComparison.Ordinal));
+
+        editor.Password = "new-secret";
+        Assert.False(editor.PasswordUnreadable);
+        Assert.Equal("plain:new-secret", editor.ToProfile().PasswordProtected);
+    }
+}
+

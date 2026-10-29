@@ -84,6 +84,8 @@ public sealed partial class SimulatorViewModel : ObservableObject, IAsyncDisposa
 
     public SessionFeedViewModel Feed { get; }
 
+    public const string PasswordBannerKey = "sim-password";
+
     public ObservableCollection<CpeProfileEditorViewModel> Profiles { get; } = [];
 
     public ObservableCollection<CpeInstanceViewModel> RunningCpes { get; } = [];
@@ -100,6 +102,13 @@ public sealed partial class SimulatorViewModel : ObservableObject, IAsyncDisposa
             Profiles.Add(new CpeProfileEditorViewModel(p, _secrets));
         }
         SelectedProfile = Profiles.FirstOrDefault();
+        var unreadable = Profiles.Where(p => p.PasswordUnreadable).Select(p => p.Name).ToList();
+        if (unreadable.Count > 0)
+        {
+            _banners.Show(BannerKind.Warning,
+                $"The password of {string.Join(", ", unreadable.Select(n => $"'{n}'"))} could not be decrypted for this Windows user; re-enter it before starting.",
+                PasswordBannerKey);
+        }
     }
 
     [RelayCommand]

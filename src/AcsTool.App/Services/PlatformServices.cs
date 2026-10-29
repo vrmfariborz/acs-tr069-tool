@@ -77,9 +77,10 @@ public sealed class DpapiSecretProtector : ISecretProtector
             {
                 return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(stored[6..]), Entropy, DataProtectionScope.CurrentUser));
             }
-            catch (CryptographicException)
+            catch (Exception ex) when (ex is CryptographicException or FormatException)
             {
-                return ""; // protected by another user/machine
+                // Protected by another Windows user/machine, or corrupted: surface it instead of silently returning "" (review m8).
+                throw new SecretUnprotectException("The stored password could not be decrypted for this Windows user; re-enter it.", ex);
             }
         }
         return stored.StartsWith("plain:", StringComparison.Ordinal) ? stored[6..] : stored;

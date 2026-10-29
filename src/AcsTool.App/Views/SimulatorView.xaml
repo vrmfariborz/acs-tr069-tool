@@ -83,7 +83,11 @@
               <Label Grid.Row="1" Content="User" />
               <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
               <Label Grid.Row="1" Grid.Column="2" Content="Password" />
-              <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}" ToolTip="Stored with DPAPI (current Windows user)" />
+              <StackPanel Grid.Row="1" Grid.Column="3">
+                <TextBox Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}" ToolTip="Stored with DPAPI (current Windows user)" />
+                <TextBlock Foreground="DarkRed" TextWrapping="Wrap" Text="Stored password could not be decrypted for this Windows user; re-enter it."
+                           Visibility="{Binding PasswordUnreadable, Converter={StaticResource BoolToVisibility}}" />
+              </StackPanel>
               <Label Grid.Row="2" Content="cwmp" />
               <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{x:Static sim:CpeProfileEditorViewModel.Versions}" SelectedItem="{Binding Version}" />
               <Label Grid.Row="2" Grid.Column="2" Content="Timeout (s)" />

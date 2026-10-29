@@ -61,6 +61,17 @@ public sealed partial class SimulationEngine : IAsyncDisposable
         {
             throw new ProfileValidationException(errors);
         }
+        if (!string.IsNullOrEmpty(profile.PasswordProtected))
+        {
+            try
+            {
+                _ = _services.Secrets.Unprotect(profile.PasswordProtected);
+            }
+            catch (SecretUnprotectException ex)
+            {
+                throw new ProfileValidationException([new ValidationError("Password", ex.Message)]);
+            }
+        }
         var ids = Expand(profile);
         var started = new List<SimulatedCpe>();
         lock (_lock)
