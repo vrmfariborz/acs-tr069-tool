@@ -41,7 +41,7 @@
       </TabItem>
       <TabItem Header="Simulator">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-          <v:SimulatorView DataContext="{Binding Simulator}" MinWidth="900" MinHeight="760"
+          <v:SimulatorView DataContext="{Binding Simulator}" MinWidth="900" MinHeight="560"
                            Width="{Binding ViewportWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}}"
                            Height="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}" />
         </ScrollViewer>

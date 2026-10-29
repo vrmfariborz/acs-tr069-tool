@@ -91,9 +91,11 @@ public sealed partial class CpeProfileEditorViewModel : ObservableObject
     private bool _loading;
     private bool _passwordEdited;
 
-    partial void OnPasswordChanged(string? value)
+    partial void OnPasswordChanged(string? oldValue, string? newValue)
     {
-        if (!_loading)
+        // A PasswordBox cannot hold null: after loading an empty or undecryptable password it echoes "" back.
+        // null <-> "" is therefore not a user edit and must not replace the stored ciphertext (review m8/m9).
+        if (!_loading && !(string.IsNullOrEmpty(oldValue) && string.IsNullOrEmpty(newValue)))
         {
             _passwordEdited = true;
             PasswordUnreadable = false;

@@ -131,6 +131,12 @@ public sealed partial class SettingsViewModel : ObservableValidator
     [RelayCommand]
     private void Cancel() => LoadFrom(_holder.Current);
 
+    /// <summary>
+    /// Reloads the fields from the current settings; call when the Settings window opens, otherwise values written since
+    /// startup (e.g. by a Proxy-tab Start) would be shown stale and written back on Save (review R-M1).
+    /// </summary>
+    public void Refresh() => LoadFrom(_holder.Current);
+
     [RelayCommand]
     private void RestoreDefaults() => LoadFrom(AppSettings.Default with { Simulator = _base.Simulator, Ui = _base.Ui, Logging = _base.Logging });
 }

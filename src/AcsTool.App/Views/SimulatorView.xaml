@@ -5,10 +5,10 @@
              xmlns:sim="clr-namespace:AcsTool.Presentation.Simulator;assembly=AcsTool.Presentation">
   <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="3*" MinHeight="360" />
+      <RowDefinition Height="3*" MinHeight="240" />
       <RowDefinition Height="5" />
       <RowDefinition Height="Auto" />
-      <RowDefinition Height="2*" MinHeight="160" />
+      <RowDefinition Height="2*" MinHeight="150" />
     </Grid.RowDefinitions>
     <Grid>
       <Grid.ColumnDefinitions>
@@ -26,7 +26,7 @@
       <!-- The profile editor scrolls on its own when its row is shorter than the editor (parameters grid keeps >= 140 px). -->
       <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                     DataContext="{Binding SelectedProfile}" Visibility="{Binding Converter={StaticResource NullToVisibility}}">
-      <DockPanel MinHeight="520" Height="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
+      <DockPanel MinHeight="360" Height="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
         <WrapPanel DockPanel.Dock="Top" Margin="4">
           <Label Content="Profile" />
           <TextBox MinWidth="220" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
@@ -86,7 +86,8 @@
               <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
               <Label Grid.Row="1" Grid.Column="2" Content="Password" />
               <StackPanel Grid.Row="1" Grid.Column="3">
-                <TextBox Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}" ToolTip="Stored with DPAPI (current Windows user)" />
+                <PasswordBox v:PasswordBoxAssistant.BoundPassword="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Stored with DPAPI (current Windows user)" />
                 <TextBlock Foreground="DarkRed" TextWrapping="Wrap" Text="Stored password could not be decrypted for this Windows user; re-enter it."
                            Visibility="{Binding PasswordUnreadable, Converter={StaticResource BoolToVisibility}}" />
               </StackPanel>

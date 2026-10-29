@@ -392,6 +392,66 @@ public class MainAndSettingsTests
         Assert.Equal(150, main.Proxy.Feed.MaxItems);
         await main.ShutdownAsync();
     }
+
+    [Fact]
+    public async Task SettingsWindowSave_WhileRunning_SurvivesStopThenStart()
+    {
+        // Review R-M1: a save while running ("applies on the next Start") was overwritten by the tab's stale values.
+        await using var acs = await FakeAcs.StartAsync();
+        await using var acs2 = await FakeAcs.StartAsync();
+        await using var h = AppHarness.Create();
+        var main = h.Get<MainViewModel>();
+        await main.InitializeAsync();
+        var proxy = main.Proxy;
+        proxy.BindAddress = "127.0.0.1";
+        proxy.Port = AppHarness.FreePort();
+        proxy.UpstreamUrl = acs.BaseUri.ToString();
+        Assert.True(await proxy.StartAsync());
+
+        var newPort = AppHarness.FreePort();
+        var settingsVm = h.Get<SettingsViewModel>();
+        Assert.Equal("0.0.0.0", settingsVm.BindAddress); // loaded at startup, stale after the Proxy-tab Start
+        settingsVm.Refresh(); // as when the Settings window opens
+        Assert.Equal("127.0.0.1", settingsVm.BindAddress);
+        settingsVm.Port = newPort;
+        settingsVm.UpstreamUrl = acs2.BaseUri.ToString();
+        Assert.True(await settingsVm.SaveAsync());
+        Assert.Equal(acs.BaseUri.ToString(), proxy.UpstreamUrl); // running: tab untouched
+
+        await proxy.StopAsync();
+        Assert.Equal(acs2.BaseUri.ToString(), proxy.UpstreamUrl);
+        Assert.Equal(newPort, proxy.Port);
+
+        Assert.True(await proxy.StartAsync());
+        var persisted = h.Get<SettingsHolder>().Current.Proxy;
+        Assert.Equal(acs2.BaseUri.ToString(), persisted.UpstreamUrl);
+        Assert.Equal(newPort, persisted.Port);
+        Assert.Equal($"http://127.0.0.1:{newPort}", Assert.Single(proxy.BoundUrls));
+        await main.ShutdownAsync();
+    }
+
+    [Fact]
+    public async Task StartFails_TabReloadsPersistedSettings()
+    {
+        await using var h = AppHarness.Create(holder => holder.Current = holder.Current with
+        {
+            Proxy = holder.Current.Proxy with
+            {
+                Tls = AcsTool.Core.Net.TlsOptions.Default with { Mode = AcsTool.Core.Net.TlsValidationMode.CustomCa, CustomCaPath = "/nonexistent/ca.pem" },
+            },
+        });
+        var proxy = h.Get<ProxyViewModel>();
+        proxy.BindAddress = "127.0.0.1";
+        proxy.Port = AppHarness.FreePort();
+        proxy.UpstreamUrl = "http://acs.example:7547/acs";
+        Assert.False(await proxy.StartAsync());
+        Assert.Equal(AcsTool.Proxy.ProxyState.Faulted, proxy.State);
+        var persisted = h.Get<SettingsHolder>().Current.Proxy;
+        Assert.Equal(persisted.Port, proxy.Port);
+        Assert.Equal(persisted.UpstreamUrl, proxy.UpstreamUrl);
+        Assert.Equal(persisted.Tls!.Mode, proxy.TlsMode);
+        Assert.Equal("http://acs.example:7547/acs", persisted.UpstreamUrl);
+    }
 }
 
 /// <summary>Simulates DPAPI data protected by another Windows user: "dpapi:" values cannot be decrypted.</summary>
@@ -406,6 +466,33 @@ public sealed class ForeignDpapiProtector : ISecretProtector
 
 public class SecretTests
 {
+    [Fact]
+    public async Task PasswordBoxEcho_AfterLoad_IsNotAnEdit_CiphertextKept()
+    {
+        // Review m9: the PasswordBox echoes the loaded value (or "" for null) back; that must not count as a user change.
+        await using var h = AppHarness.Create(services: s => s.AddSingleton<ISecretProtector, ForeignDpapiProtector>());
+        var profiles = h.Get<IProfileStore>();
+        await profiles.SaveAsync(DefaultProfiles.Tr098("Foreign", "SIMF0001") with { PasswordProtected = "dpapi:AAAA" }, default);
+        await profiles.SaveAsync(DefaultProfiles.Tr098("Readable", "SIMR0001") with { PasswordProtected = "plain:secret" }, default);
+        var sim = h.Get<SimulatorViewModel>();
+        await sim.LoadAsync();
+        var foreign = Assert.Single(sim.Profiles, p => p.Name == "Foreign");
+        var readable = Assert.Single(sim.Profiles, p => p.Name == "Readable");
+
+        foreign.Password = ""; // PasswordBox echo of null
+        Assert.True(foreign.PasswordUnreadable);
+        Assert.Equal("dpapi:AAAA", foreign.ToProfile().PasswordProtected);
+
+        readable.Password = "secret"; // re-push of the same value
+        Assert.Equal("plain:secret", readable.ToProfile().PasswordProtected);
+
+        foreign.Password = "typed";
+        Assert.False(foreign.PasswordUnreadable);
+        Assert.Equal("plain:typed", foreign.ToProfile().PasswordProtected);
+        readable.Password = "";
+        Assert.Null(readable.ToProfile().PasswordProtected); // clearing a real password is an edit
+    }
+
     [Fact]
     public async Task UndecryptablePassword_BannerShown_CiphertextKeptOnSave_StartRefused()
     {

@@ -45,6 +45,32 @@ public class XamlLayoutTests
     }
 
     [Fact]
+    public void SimulatorTab_MinimumsFitDefaultWindow_NoNestedScrollbarAtDefaultSize()
+    {
+        // Review R-m1 / NEW-01: at the default 1280x820 window the tab viewport is ~660 px.
+        static int Px(XElement e, string a) => int.Parse((string)e.Attribute(a)!, System.Globalization.CultureInfo.InvariantCulture);
+        var simView = Load("MainWindow.xaml").Descendants(Wpf + "TabItem")
+            .Select(t => t.Elements().Single().Elements().Single()).Single(v => v.Name.LocalName == "SimulatorView");
+        Assert.InRange(Px(simView, "MinHeight"), 400, 600);
+        var sim = Load("SimulatorView.xaml");
+        var rowMins = sim.Root!.Elements().Single().Element(Wpf + "Grid.RowDefinitions")!.Elements()
+            .Sum(r => r.Attribute("MinHeight") is null ? 0 : Px(r, "MinHeight"));
+        Assert.True(rowMins <= Px(simView, "MinHeight"), $"row minimums {rowMins} exceed the view minimum");
+        var editor = sim.Descendants(Wpf + "ScrollViewer").Single().Elements().Single();
+        Assert.InRange(Px(editor, "MinHeight"), 200, 400);
+    }
+
+    [Fact]
+    public void SimulatorPassword_IsAPasswordBox_NotPlainText()
+    {
+        // Review m9.
+        var sim = Load("SimulatorView.xaml");
+        Assert.DoesNotContain(sim.Descendants(Wpf + "TextBox"), t => ((string?)t.Attribute("Text") ?? "").Contains("Password", StringComparison.Ordinal));
+        var box = Assert.Single(sim.Descendants(Wpf + "PasswordBox"));
+        Assert.Contains(box.Attributes(), a => a.Name.LocalName == "PasswordBoxAssistant.BoundPassword" && a.Value.Contains("Binding Password", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void TabContentViews_SizeToViewport_NoFixedPixels()
     {
         foreach (var sv in Load("MainWindow.xaml").Descendants(Wpf + "TabItem").Select(t => t.Elements().Single()))

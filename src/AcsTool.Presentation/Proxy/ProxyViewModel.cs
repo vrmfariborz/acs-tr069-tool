@@ -195,6 +195,7 @@ public sealed partial class ProxyViewModel : ObservableValidator, IAsyncDisposab
             await server.DisposeAsync();
             _banners.Show(BannerKind.Error, ex.Message, BindBannerKey);
             State = ProxyState.Faulted;
+            LoadFrom(_settings.Current.Proxy); // re-sync with persisted settings (review R-M1)
             return false;
         }
 #pragma warning disable CA1031 // any start failure must leave the tab usable (Faulted + banner), never stuck in Starting (review m11)
@@ -206,6 +207,7 @@ public sealed partial class ProxyViewModel : ObservableValidator, IAsyncDisposab
             await server.DisposeAsync();
             _banners.Show(BannerKind.Error, "Proxy failed to start: " + ex.Message, BindBannerKey);
             State = ProxyState.Faulted;
+            LoadFrom(_settings.Current.Proxy); // re-sync with persisted settings (review R-M1)
             return false;
         }
     }
@@ -223,6 +225,9 @@ public sealed partial class ProxyViewModel : ObservableValidator, IAsyncDisposab
         await server.DisposeAsync();
         BoundUrls.Clear();
         State = ProxyState.Stopped;
+        // Settings saved in the Settings window while running ("apply on the next Start") must not be overwritten by the
+        // tab's stale values on the next Start; the tab was read-only while running, so no user edits are lost (review R-M1).
+        LoadFrom(_settings.Current.Proxy);
     }
 
     private void OnServerStateChanged(object? sender, ProxyState s)
