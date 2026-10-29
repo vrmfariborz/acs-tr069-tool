@@ -26,6 +26,20 @@ public class ClientSessionTests
     }
 
     [Fact]
+    public async Task ResponseCapture_TruncatedToTransportLimit()
+    {
+        _t.Then(p => FakeTransport.Ok(Kit.Builder.Build(new InformResponseMessage(1), CwmpVersion.V1_0, new CwmpHeader(p.Envelope!.Header.Id))) with { MaxCapturedBodyBytes = 64 })
+            .Then(_ => FakeTransport.Ok([], 204) with { MaxCapturedBodyBytes = 64 });
+        var r = await Run();
+        Assert.Equal(SessionOutcome.Completed, r.Outcome);
+        var first = _store.Get(r.SessionId)!.Exchanges[0];
+        Assert.True(first.Response!.Truncated);
+        Assert.Equal(64, first.Response.Body.Length);
+        Assert.True(first.Response.OriginalLength > 64);
+        Assert.Equal(CwmpMessageKind.InformResponse, first.ResponseSummary!.Kind); // summary still from the full body
+    }
+
+    [Fact]
     public async Task HappyPath_InformRpcEmpty_Completed_SinkOrder()
     {
         AcceptInform()

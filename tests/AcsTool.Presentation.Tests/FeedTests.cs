@@ -145,6 +145,48 @@ public class FeedViewModelTests
     }
 
     [Fact]
+    public void Pause_CoalescesById_EvictedSessionsDoNotReappear()
+    {
+        var store = Kit.Store(capture: new CaptureSettings(MaxSessions: 5));
+        var feed = Kit.Feed(store);
+        feed.IsPaused = true;
+        for (var i = 0; i < 20; i++)
+        {
+            var id = Kit.StartSession(store, $"E{i}");
+            feed.Apply(Kit.Batch(store, (id, SessionChangeKind.Added)));
+            for (var u = 0; u < 50; u++)
+            {
+                feed.Apply(Kit.Batch(store, (id, SessionChangeKind.Updated)));
+            }
+            store.EndSession(id, SessionOutcome.Completed);
+            feed.Apply(Kit.Batch(store, (id, SessionChangeKind.Ended)));
+        }
+        Assert.Equal(20, feed.PausedPendingCount); // one entry per session, not one per batch (1,040 batches)
+        Assert.Empty(feed.Items);
+        feed.IsPaused = false;
+        Assert.Equal(0, feed.PausedPendingCount);
+        Assert.Equal(5, feed.Items.Count); // the 15 sessions evicted during the pause are not resurrected
+        Assert.All(feed.Items, i => Assert.NotNull(store.Get(i.Id)));
+    }
+
+    [Fact]
+    public void Pause_ManyDistinctSessions_FallsBackToResync_Bounded()
+    {
+        var store = Kit.Store(capture: new CaptureSettings(MaxSessions: 100));
+        var feed = Kit.Feed(store);
+        feed.IsPaused = true;
+        for (var i = 0; i < SessionFeedViewModel.PausedPendingLimit + 10; i++)
+        {
+            var id = Guid.NewGuid();
+            feed.Apply(new FeedBatch([new FeedChange(id, SessionChangeKind.Added, null)], false, null));
+        }
+        Assert.True(feed.PausedPendingCount <= SessionFeedViewModel.PausedPendingLimit);
+        var live = Kit.StartSession(store, "LIVE");
+        feed.IsPaused = false;
+        Assert.Equal(live, Assert.Single(feed.Items).Id);
+    }
+
+    [Fact]
     public void SelectedSessionUpdated_DetailRefreshed_RemovedClearsSelection()
     {
         var feed = Kit.Feed(_store);

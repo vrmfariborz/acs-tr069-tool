@@ -17,7 +17,11 @@ public sealed partial class SessionFeedViewModel : ObservableObject, IFeedBatchC
     private readonly ISessionStore _store;
     private readonly List<SessionItemViewModel> _all = []; // oldest → newest
     private readonly Dictionary<Guid, SessionItemViewModel> _byId = [];
-    private readonly List<FeedBatch> _paused = [];
+    // While paused, changes are coalesced by id (no snapshots kept; plan §3.8 rule 6). Above PausedPendingLimit ids, or after a
+    // resync batch, resume does a full resync from the store instead. Memory stays bounded by the store, not by the pause length.
+    private readonly Dictionary<Guid, SessionChangeKind> _pausedPending = [];
+    private bool _pausedCleared;
+    private bool _pausedResync;
 
     [ObservableProperty]
     private SessionItemViewModel? _selectedItem;
@@ -63,10 +67,61 @@ public sealed partial class SessionFeedViewModel : ObservableObject, IFeedBatchC
         ArgumentNullException.ThrowIfNull(batch);
         if (IsPaused)
         {
-            _paused.Add(batch);
+            CoalescePaused(batch);
             return;
         }
         ApplyCore(batch);
+    }
+
+    /// <summary>Maximum distinct session ids tracked while paused before falling back to a full resync on resume.</summary>
+    public const int PausedPendingLimit = 10_000;
+
+    /// <summary>Number of distinct sessions with pending changes while paused (diagnostics/tests).</summary>
+    public int PausedPendingCount => _pausedPending.Count;
+
+    private void CoalescePaused(FeedBatch batch)
+    {
+        if (batch.Cleared)
+        {
+            _pausedCleared = true;
+            _pausedPending.Clear();
+        }
+        if (batch.Resync is not null || _pausedResync)
+        {
+            _pausedResync = true;
+            _pausedPending.Clear();
+            return;
+        }
+        foreach (var c in batch.Changes)
+        {
+            _pausedPending[c.Id] = _pausedPending.TryGetValue(c.Id, out var k) ? SessionFeedPump.Max(k, c.Kind) : c.Kind;
+        }
+        if (_pausedPending.Count > PausedPendingLimit)
+        {
+            _pausedResync = true;
+            _pausedPending.Clear();
+        }
+    }
+
+    private void ResumeFromPause()
+    {
+        var cleared = _pausedCleared;
+        var resync = _pausedResync;
+        var pending = _pausedPending.ToList();
+        _pausedPending.Clear();
+        _pausedCleared = _pausedResync = false;
+        if (resync)
+        {
+            ApplyCore(new FeedBatch([], cleared, _store.GetAll()));
+            return;
+        }
+        // Fresh snapshots from the store: sessions evicted during the pause come back as null → removed, never re-added.
+        var changes = pending.Select(p =>
+        {
+            var snap = p.Value == SessionChangeKind.Removed ? null : _store.Get(p.Key);
+            return new FeedChange(p.Key, snap is null ? SessionChangeKind.Removed : p.Value, snap);
+        }).ToList();
+        ApplyCore(new FeedBatch(changes, cleared, null));
     }
 
     private void ApplyCore(FeedBatch batch)
@@ -214,12 +269,7 @@ public sealed partial class SessionFeedViewModel : ObservableObject, IFeedBatchC
     {
         if (!value)
         {
-            var batches = _paused.ToList();
-            _paused.Clear();
-            foreach (var b in batches)
-            {
-                ApplyCore(b);
-            }
+            ResumeFromPause();
         }
     }
 

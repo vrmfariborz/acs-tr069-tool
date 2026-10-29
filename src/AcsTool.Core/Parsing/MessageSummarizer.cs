@@ -20,6 +20,9 @@ public interface IMessageSummarizer
 /// <summary>One-line titles and stable key/value fields per message (FR-C-04).</summary>
 public sealed class MessageSummarizer : IMessageSummarizer
 {
+    /// <summary>Per-list cap on summary fields (parameters, names, attributes, SPV faults).</summary>
+    public const int MaxListedItems = 200;
+
     private static string N(long v) => v.ToString(CultureInfo.InvariantCulture);
 
     public MessageSummary Summarize(ParseResult result)
@@ -117,10 +120,7 @@ public sealed class MessageSummarizer : IMessageSummarizer
                 break;
             case GetParameterNamesResponseMessage gpnr:
                 title = $"GPNResponse ×{N(gpnr.List.Count)}";
-                foreach (var p in gpnr.List)
-                {
-                    F("Name", $"{p.Name} ({(p.Writable ? "W" : "R")})");
-                }
+                AddCapped(fields, gpnr.List, p => new("Name", $"{p.Name} ({(p.Writable ? "W" : "R")})"));
                 break;
             case GetParameterAttributesMessage gpa:
                 title = $"GPA ×{N(gpa.Names.Count)}";
@@ -128,17 +128,12 @@ public sealed class MessageSummarizer : IMessageSummarizer
                 break;
             case GetParameterAttributesResponseMessage gpar:
                 title = $"GPAResponse ×{N(gpar.List.Count)}";
-                foreach (var a in gpar.List)
-                {
-                    F(a.Name, $"Notification={N(a.Notification)} AccessList={string.Join(",", a.AccessList)}");
-                }
+                AddCapped(fields, gpar.List, a => new(a.Name, $"Notification={N(a.Notification)} AccessList={string.Join(",", a.AccessList)}"));
                 break;
             case SetParameterAttributesMessage spa:
                 title = $"SPA ×{N(spa.List.Count)}";
-                foreach (var a in spa.List)
-                {
-                    F(a.Name, $"Notification={(a.NotificationChange ? N(a.Notification) : "-")} AccessList={(a.AccessListChange ? string.Join(",", a.AccessList) : "-")}");
-                }
+                AddCapped(fields, spa.List, a => new(a.Name,
+                    $"Notification={(a.NotificationChange ? N(a.Notification) : "-")} AccessList={(a.AccessListChange ? string.Join(",", a.AccessList) : "-")}"));
                 break;
             case AddObjectMessage ao:
                 title = $"AddObject {ao.ObjectName}";
@@ -201,10 +196,7 @@ public sealed class MessageSummarizer : IMessageSummarizer
                 F("faultstring", f.SoapFaultString);
                 F("FaultCode", N(f.FaultCode));
                 F("FaultString", f.FaultString);
-                foreach (var i in f.SpvFaults)
-                {
-                    F("SPV fault", $"{i.ParameterName}: {N(i.FaultCode)} {i.FaultString}");
-                }
+                AddCapped(fields, f.SpvFaults, i => new("SPV fault", $"{i.ParameterName}: {N(i.FaultCode)} {i.FaultString}"));
                 break;
             default:
                 title = result.Kind == CwmpMessageKind.Unknown
@@ -220,17 +212,26 @@ public sealed class MessageSummarizer : IMessageSummarizer
     private static void AddParams(List<KeyValuePair<string, string>> fields, IReadOnlyList<ParameterValue> ps)
     {
         fields.Add(new($"Params ({N(ps.Count)})", ps.Count == 0 ? "—" : ps[0].Name + (ps.Count > 1 ? " …" : string.Empty)));
-        foreach (var p in ps)
-        {
-            fields.Add(new(p.Name, $"{p.Value} ({p.XsdType})"));
-        }
+        AddCapped(fields, ps, p => new(p.Name, $"{p.Value} ({p.XsdType})"));
     }
 
-    private static void AddNames(List<KeyValuePair<string, string>> fields, IReadOnlyList<string> names)
+    private static void AddNames(List<KeyValuePair<string, string>> fields, IReadOnlyList<string> names) =>
+        AddCapped(fields, names, n => new("Name", n));
+
+    /// <summary>
+    /// Adds at most <see cref="MaxListedItems"/> per-item fields plus a "… and K more" field, so a summary stays small even for
+    /// huge GPV/GPN messages (the full content is in the captured body / Raw view; review M4).
+    /// </summary>
+    private static void AddCapped<T>(List<KeyValuePair<string, string>> fields, IReadOnlyList<T> items, Func<T, KeyValuePair<string, string>> field)
     {
-        foreach (var n in names)
+        var take = Math.Min(items.Count, MaxListedItems);
+        for (var i = 0; i < take; i++)
         {
-            fields.Add(new("Name", n));
+            fields.Add(field(items[i]));
+        }
+        if (items.Count > take)
+        {
+            fields.Add(new($"… and {N(items.Count - take)} more", "see the Raw view"));
         }
     }
 }

@@ -199,7 +199,7 @@ public sealed class CwmpClientSession
         {
             parsed = r.Body.IsEmpty ? ParseResult.EmptyBody : _ctx.Parser.Parse(r.Body.Span, HeaderUtil.Get(r.Headers, "Content-Type"));
             respSummary = _ctx.Summarizer.Summarize(parsed);
-            respCap = HttpMessageCapture.From(null, _ctx.Profile.AcsUrl, status, r.Headers, r.Body.Span, int.MaxValue);
+            respCap = HttpMessageCapture.From(null, _ctx.Profile.AcsUrl, status, r.Headers, r.Body.Span, r.MaxCapturedBodyBytes);
         }
         _ctx.Sink.CompleteExchange(_sid, seq, respCap, respSummary, r.Error, r.Timings);
         ct.ThrowIfCancellationRequested();

@@ -17,6 +17,9 @@ public sealed record TransportResponse(int? StatusCode, IReadOnlyList<KeyValuePa
     ReadOnlyMemory<byte> Body, UpstreamError? Error, ExchangeTimings Timings, HttpMessageCapture RequestCapture)
 {
     public bool IsTransportFailure => StatusCode is null || Error is { Kind: not UpstreamErrorKind.HttpStatus };
+
+    /// <summary>Capture limit for the response body (CaptureSettings.MaxCapturedBodyBytes of the transport); default 1 MiB.</summary>
+    public int MaxCapturedBodyBytes { get; init; } = new CaptureSettings().MaxCapturedBodyBytes;
 }
 
 public interface ICwmpTransportFactory
@@ -101,7 +104,7 @@ public sealed class HttpCwmpTransport : ICwmpTransport
             .ConfigureAwait(false);
         var reqHeaders = CaptureRequestHeaders(req);
         var capture = HttpMessageCapture.From("POST", req.RequestUri?.ToString() ?? _url.ToString(), null, reqHeaders, body.Span, _capture.MaxCapturedBodyBytes);
-        return new TransportResponse(r.StatusCode, r.Headers, r.Body, r.Error, r.Timings, capture);
+        return new TransportResponse(r.StatusCode, r.Headers, r.Body, r.Error, r.Timings, capture) { MaxCapturedBodyBytes = _capture.MaxCapturedBodyBytes };
     }
 
     private List<KeyValuePair<string, string>> CaptureRequestHeaders(HttpRequestMessage req)

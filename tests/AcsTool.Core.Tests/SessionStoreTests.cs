@@ -97,6 +97,18 @@ public class SessionStoreTests
     }
 
     [Fact]
+    public void CapturedBytes_CountsHeadersAndSummaryFields_NotJustBodies()
+    {
+        var store = new InMemorySessionStore(new CaptureSettings(), TimeProvider.System);
+        var id = store.StartSession(Start());
+        var req = HttpMessageCapture.From("POST", "/acs", null, [new("Content-Type", "text/xml")], new byte[10], int.MaxValue); // 2*(12+8)=40
+        var summary = MessageSummary.None with { Fields = [new("Name", "Device.X")], Warnings = ["w1"] }; // 2*(4+8) + 2*2 = 28
+        store.AddExchange(id, req, summary, DateTimeOffset.UnixEpoch);
+        Assert.Equal(10 + 40 + 28, store.Get(id)!.CapturedBytes);
+        Assert.Equal(78, store.Stats.CapturedBytes);
+    }
+
+    [Fact]
     public void Eviction_ByteBudget_KeepsActiveEvenIfOverBudget()
     {
         var store = new InMemorySessionStore(new CaptureSettings(CaptureBudgetBytes: 100), TimeProvider.System);

@@ -59,6 +59,17 @@ public class TransportTests
     }
 
     [Fact]
+    public async Task Response_CarriesConfiguredCaptureLimit()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        await using var t = new HttpCwmpTransport(Kit.Profile(acs.Url()), null, new UpstreamHandlerFactory(), new SimulatorSettings(),
+            new CaptureSettings(MaxCapturedBodyBytes: 100), TimeProvider.System);
+        var r = await t.PostAsync(Inform(), "\"\"", default);
+        Assert.Equal(100, r.MaxCapturedBodyBytes);
+        Assert.True(r.RequestCapture.Truncated);
+    }
+
+    [Fact]
     public async Task DigestAuth_Succeeds()
     {
         await using var acs = await FakeAcs.StartAsync(o => o.Digest = ("cpe", "secret", "acs"));
