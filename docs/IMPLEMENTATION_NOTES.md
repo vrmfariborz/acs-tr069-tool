@@ -33,7 +33,7 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
   - A trailing empty POST ends the session at once.
   - Otherwise the sweeper ends it as Completed/AcsFault/CpeFault after `CompletionGrace` = 2 s of idle time. The sweeper runs every 1 s (the plan said 5 s; shortened for this rule), so the UI can show "in progress" for up to about 3 s.
 - The T2.5 acceptance test says "5 exchanges", but the flow it describes has 4 HTTP requests: Inform, empty, GPVResponse, empty. The test asserts those 4, in order.
-- Set-Cookie rewriting (strip `Domain`, rewrite `Path`) was pulled forward from M5. The Secure flag is stripped only when the CPE leg is HTTP and the upstream is HTTPS.
+- Set-Cookie rewriting was pulled forward from M5: `Domain` is stripped; the Secure flag is stripped only when the CPE leg is HTTP and the upstream is HTTPS; a `Path` that the CPE's request path would not match (upstream base path or `PathMode=Fixed`, e.g. `Path=/tr069` while the CPE posts to `/acs`) is rewritten to `Path=/` with a note (review m13).
 - All four upstream TLS modes are implemented. Only `Strict` is exercised by tests; HTTPS tests are M6.
 - The DNS-failure test depends on the environment. In sandboxes where every name resolves (a DNS sinkhole), it accepts Connect/Timeout instead of `Dns`.
 

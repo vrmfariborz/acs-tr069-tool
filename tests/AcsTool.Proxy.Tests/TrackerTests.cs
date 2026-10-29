@@ -232,6 +232,19 @@ public class UriAndHeaderTests
     }
 
     [Fact]
+    public void RewriteSetCookie_PathNotMatchedByCpePath_RewrittenToRoot()
+    {
+        var r = new HeaderRewriter(new ProxySettings());
+        var notes = new List<string>();
+        Assert.Equal("sid=1; Path=/; HttpOnly", r.RewriteSetCookie("sid=1; Path=/tr069; HttpOnly", false, false, notes, "/acs"));
+        Assert.Contains("Set-Cookie Path /tr069 rewritten to / (CPE posts to /acs)", notes);
+        Assert.Equal("sid=1; Path=/acs", r.RewriteSetCookie("sid=1; Path=/acs", false, false, [], "/acs/x?y=1"));
+        Assert.Equal("sid=1; Path=/", r.RewriteSetCookie("sid=1; Path=/", false, false, [], "/acs"));
+        Assert.Equal("sid=1; Path=/ac", r.RewriteSetCookie("sid=1; Path=/ac", false, false, [], "/ac")); // exact match kept
+        Assert.Equal("sid=1; Path=/", r.RewriteSetCookie("sid=1; Path=/ac", false, false, [], "/acs")); // /ac does not path-match /acs
+    }
+
+    [Fact]
     public void RewriteSetCookie_StripsDomainAndSecureOnHttp()
     {
         var notes = new List<string>();

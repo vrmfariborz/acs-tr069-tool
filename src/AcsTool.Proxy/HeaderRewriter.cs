@@ -42,7 +42,9 @@ public sealed class HeaderRewriter(ProxySettings settings)
         }
     }
 
-    public IEnumerable<KeyValuePair<string, string>> ForDownstreamResponse(ForwardResult r, bool downstreamHttps, bool upstreamHttps, IList<string> notes)
+    /// <param name="cpePath">The CPE's request path; when given, a cookie Path the CPE would not match is rewritten to "/" (FR-P-12).</param>
+    public IEnumerable<KeyValuePair<string, string>> ForDownstreamResponse(ForwardResult r, bool downstreamHttps, bool upstreamHttps, IList<string> notes,
+        string? cpePath = null)
     {
         ArgumentNullException.ThrowIfNull(r);
         ArgumentNullException.ThrowIfNull(notes);
@@ -60,7 +62,7 @@ public sealed class HeaderRewriter(ProxySettings settings)
                     AddNote(notes, "Set-Cookie consumed by proxy (ManagedPerCpe)");
                     continue;
                 }
-                result.Add(new(h.Key, RewriteSetCookie(h.Value, downstreamHttps, upstreamHttps, notes)));
+                result.Add(new(h.Key, RewriteSetCookie(h.Value, downstreamHttps, upstreamHttps, notes, cpePath)));
                 continue;
             }
             if (h.Key.Equals("Location", StringComparison.OrdinalIgnoreCase) && r.StatusCode is >= 300 and < 400)
@@ -72,7 +74,7 @@ public sealed class HeaderRewriter(ProxySettings settings)
         return result;
     }
 
-    internal string RewriteSetCookie(string value, bool downstreamHttps, bool upstreamHttps, IList<string> notes)
+    internal string RewriteSetCookie(string value, bool downstreamHttps, bool upstreamHttps, IList<string> notes, string? cpePath = null)
     {
         var parts = value.Split(';').Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
         if (parts.Count == 0)
@@ -80,6 +82,7 @@ public sealed class HeaderRewriter(ProxySettings settings)
             return value;
         }
         var kept = new List<string> { parts[0] };
+        var changed = false;
         foreach (var attr in parts.Skip(1))
         {
             var name = attr.Split('=', 2)[0].Trim();
@@ -93,9 +96,38 @@ public sealed class HeaderRewriter(ProxySettings settings)
                 AddNote(notes, "Set-Cookie Secure stripped (CPE leg is HTTP)");
                 continue;
             }
+            if (cpePath is not null && name.Equals("Path", StringComparison.OrdinalIgnoreCase))
+            {
+                var cookiePath = attr.Split('=', 2) is [_, var v] ? v.Trim() : "";
+                if (cookiePath.Length > 0 && !PathMatches(cpePath, cookiePath))
+                {
+                    // The upstream path differs (base path / PathMode=Fixed): the CPE would never send this cookie back to the proxy.
+                    AddNote(notes, $"Set-Cookie Path {cookiePath} rewritten to / (CPE posts to {cpePath})");
+                    kept.Add("Path=/");
+                    changed = true;
+                    continue;
+                }
+            }
             kept.Add(attr);
         }
-        return kept.Count == parts.Count ? value : string.Join("; ", kept);
+        return kept.Count == parts.Count && !changed ? value : string.Join("; ", kept);
+    }
+
+    /// <summary>RFC 6265 §5.1.4 path-match.</summary>
+    internal static bool PathMatches(string requestPathAndQuery, string cookiePath)
+    {
+        var q = requestPathAndQuery.IndexOf('?', StringComparison.Ordinal);
+        var path = q >= 0 ? requestPathAndQuery[..q] : requestPathAndQuery;
+        if (path.Length == 0)
+        {
+            path = "/";
+        }
+        if (string.Equals(path, cookiePath, StringComparison.Ordinal))
+        {
+            return true;
+        }
+        return path.StartsWith(cookiePath, StringComparison.Ordinal)
+            && (cookiePath.EndsWith('/') || path[cookiePath.Length] == '/');
     }
 
     private static void AddNote(IList<string> notes, string note)

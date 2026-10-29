@@ -267,6 +267,20 @@ public class ForwardingTests
     }
 
     [Fact]
+    public async Task SetCookiePath_ForUpstreamBasePath_RewrittenSoCpeReplaysIt()
+    {
+        await using var acs = await FakeAcs.StartAsync(o => o.SetCookie = "fakeacs-sid={n}; Path=/tr069");
+        await using var h = await ProxyHarness.StartAsync(acs, s => s with { UpstreamUrl = acs.Url("/tr069") });
+        using var c1 = ProxyHarness.CpeClient(useCookies: false);
+        using var r1 = await c1.SendAsync(ProxyHarness.Post(h.Url("/acs"), ProxyHarness.Inform()));
+        Assert.Equal("fakeacs-sid=1; Path=/", r1.Headers.GetValues("Set-Cookie").Single());
+        Assert.StartsWith("/tr069", acs.Received[0].PathAndQuery, StringComparison.Ordinal);
+        using var r2 = await c1.SendAsync(ProxyHarness.Post(h.Url("/acs"), null));
+        var s = await h.WaitForEndedAsync();
+        Assert.Contains("Set-Cookie Path /tr069 rewritten to / (CPE posts to /acs)", s.Exchanges[0].Notes);
+    }
+
+    [Fact]
     public async Task DigestAuth_RelayedTransparently_SingleSession()
     {
         await using var acs = await FakeAcs.StartAsync(o => o.Digest = ("cpe", "pw", "acs"));
