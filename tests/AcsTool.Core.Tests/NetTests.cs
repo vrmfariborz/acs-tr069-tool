@@ -153,13 +153,12 @@ public class LiveNetworkClassificationTests
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Dns_NonexistentInvalidTld_Dns()
     {
-        if (await ResolvesAsync("nonexistent.invalid"))
-        {
-            return; // environment hijacks DNS (e.g. sandbox egress resolver answers every name); covered by constructed-exception tests
-        }
+        // Reported as Skipped, not Passed, when the environment can't run it (BUG-03); also covered by constructed-exception tests.
+        Skip.If(await ResolvesAsync("nonexistent.invalid"),
+            "Environment resolves nonexistent.invalid (DNS hijacked, e.g. a sandbox egress resolver answers every name)");
         var r = await Send("http://nonexistent.invalid/acs", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10));
         Assert.Equal(UpstreamErrorKind.Dns, r.Error!.Kind);
     }
@@ -176,13 +175,10 @@ public class LiveNetworkClassificationTests
         Assert.Equal("ConnectionRefused", r.Error.SocketError);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Connect_UnroutableAddress_ConnectTimedOut()
     {
-        if (Environment.GetEnvironmentVariable("ACSTOOL_SKIP_NET_TIMEOUT") == "1")
-        {
-            return; // skippable per plan §5.1
-        }
+        Skip.If(Environment.GetEnvironmentVariable("ACSTOOL_SKIP_NET_TIMEOUT") == "1", "ACSTOOL_SKIP_NET_TIMEOUT=1 (plan §5.1)"); // BUG-03
         var r = await Send("http://10.255.255.1:7547/acs", TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(10));
         Assert.Equal(UpstreamErrorKind.Connect, r.Error!.Kind);
         // Some sandboxes reject unroutable addresses immediately (NetworkUnreachable) instead of timing out.
