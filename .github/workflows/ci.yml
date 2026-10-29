@@ -23,7 +23,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with: { global-json-file: global.json }
       - run: dotnet --info
-      - run: dotnet build AcsTool.sln -c Release
+      - name: build and test (build.ps1 -NoCoverage; includes the ACSTOOL_SKIP_NET_TIMEOUT guard)
+        shell: pwsh
+        run: ./build.ps1 -NoCoverage
       - run: ./publish.ps1
         shell: pwsh
       - name: smoke start (--smoke-exit)
