@@ -307,7 +307,7 @@ Total: 17 tasks, about 13–15 working days for one implementer.
 
 ### M5-T14 — Review m3: cookie-pair correlation fix (S)
 
-- **Description:** Implements the fix proposed in `docs/REVIEW_M0-M4.md` m3. `CpeSessionTracker._byCookie` becomes `Dictionary<string, HashSet<ProxySession>>`. `ObserveResponse` adds the session to the pair's set. `FindExisting` accepts a cookie match only if the set has **exactly one** active session, **or** exactly one candidate whose `ClientIp` equals `req.RemoteIp`. Otherwise it falls through to the IP fallback and adds the note "ambiguous cookie correlation ignored ({pair})". Unindexing (around line 395, which removes `_byCookie` entries when a session ends) removes only this session from each set.
+- **Description:** Implements the fix proposed in `docs/reviews/REVIEW_M0-M4.md` m3. `CpeSessionTracker._byCookie` becomes `Dictionary<string, HashSet<ProxySession>>`. `ObserveResponse` adds the session to the pair's set. `FindExisting` accepts a cookie match only if the set has **exactly one** active session, **or** exactly one candidate whose `ClientIp` equals `req.RemoteIp`. Otherwise it falls through to the IP fallback and adds the note "ambiguous cookie correlation ignored ({pair})". Unindexing (around line 395, which removes `_byCookie` entries when a session ends) removes only this session from each set.
 - **Why in M5:** with HTTPS ACSes behind load balancers (`SERVERID=`, `AWSALB=`), shared affinity cookies become common, and a wrong match forwards one CPE's request over **another session's upstream TLS connection** (D6 broken, TlsInfo misattributed).
 - **Files:** `src/AcsTool.Proxy/CpeSessionTracker.cs`, `tests/AcsTool.Proxy.Tests/TrackerTests.cs`.
 - **Acceptance:** two CPEs from different IPs that both receive `SERVERID=node1`; CPE A reconnects mid-session (new connection id) → it resolves to A's session (by IP fallback), never B's. A unique cookie still correlates across a reconnect from a *different* IP (e.g. CPE behind a NAT that changes source address). A session end removes only its own entry.
@@ -514,7 +514,7 @@ Results go into `IMPLEMENTATION_NOTES.md` under "M5 manual checklist", like T4.6
 
 ## 5. Deferred items: folded into M5 vs. staying deferred
 
-Sources: `docs/IMPLEMENTATION_NOTES.md` (Deviations, "Deferred", "Deferred after the final review", "Deferred after the fix/ci-followups review") and `docs/REVIEW_M0-M4.md` (the "Deferred items: does each block the merge?" table).
+Sources: `docs/IMPLEMENTATION_NOTES.md` (Deviations, "Deferred", "Deferred after the final review", "Deferred after the fix/ci-followups review") and `docs/reviews/REVIEW_M0-M4.md` (the "Deferred items: does each block the merge?" table).
 
 | Item | Where it's recorded | Decision | Reason |
 |---|---|---|---|
@@ -567,7 +567,7 @@ These are for DevOrchestrator/ReviewerBot. CoderBot should not "fix the plan" in
 8. **Unused fields:** `TlsOptions.ClientCertPfxPath` / `ClientCertPasswordProtected` exist (PLAN FR-P-18 stretch) but nothing reads them. Harmless, but the UI must not offer them until D5 changes.
 9. **Display URLs:** `ProxyViewModel.DisplayUrls` hard-codes `http://`; `ProxyServer.BoundPort` assumes one listener. Fine for a769aae, but both need changes for FR-P-17. (T08/T12)
 10. **Test infra:** PLAN T2.1 promised "HTTPS via a test cert (M6)". `FakeAcs.StartAsync` and `FakeAcs.Url()` are HTTP-only, with `http://` hard-coded. As planned, but a prerequisite. (T03)
-11. **Where the "m3 tracked for M5" note lives:** it's in `docs/REVIEW_M0-M4.md` (deferred-items table: "Track it for M5"), not in `IMPLEMENTATION_NOTES.md`. The NOTES list m3 only as "outside the requested scope, unchanged". At review time "M5" meant Auth and cookies. This plan folds m3 in anyway (§5).
+11. **Where the "m3 tracked for M5" note lives:** it's in `docs/reviews/REVIEW_M0-M4.md` (deferred-items table: "Track it for M5"), not in `IMPLEMENTATION_NOTES.md`. The NOTES list m3 only as "outside the requested scope, unchanged". At review time "M5" meant Auth and cookies. This plan folds m3 in anyway (§5).
 12. **Target framework:** `Directory.Build.props` (`AcsToolTfm=net8.0`), `global.json` (8.0.427, `latestFeature`), and `AnalysisLevel 8.0-recommended` are still net8 at a769aae. That's expected (the migration is in flight) and consistent with PLAN D2/Q1 until the net10 merge.
 
 *End of M5 task plan.*

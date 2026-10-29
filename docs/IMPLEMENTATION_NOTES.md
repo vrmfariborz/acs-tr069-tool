@@ -69,7 +69,7 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 8. Password binding (review R2-M1). On a fresh install (no profiles or settings file yet), click **+ From TR-098** first (no profile is created automatically), select the new profile and type a password into the Password field. Use credentials that an ACS requiring Basic or Digest auth accepts. Save and restart the app. Start the profile and click "Send Inform now". The CPE authenticates: the session shows an auth challenge followed by success and ends Completed, not AuthFailed. The password field shows dots and never plain text.
 9. Proxy notes (doc review g, n3). With an ACS that sets a cookie with `Domain=` (Cookies = PassThrough), run a proxied session, select the exchange whose response carries `Set-Cookie`, and open the Summary tab. A **Proxy notes** list appears below the Response fields with `• Set-Cookie Domain stripped`. An exchange without notes shows no Proxy notes header.
 
-## Review fixes (docs/REVIEW_M0-M4.md, branch fix/review-m0-m4)
+## Review fixes (docs/reviews/REVIEW_M0-M4.md, branch fix/review-m0-m4)
 
 Fixed, each with tests: M1, M2, M3, M4, M5, M6, m1, m5, m6, m8, m10, m11, m12 (partly), m13, m14, plus the user-reported clipped-tab layout bug.
 
