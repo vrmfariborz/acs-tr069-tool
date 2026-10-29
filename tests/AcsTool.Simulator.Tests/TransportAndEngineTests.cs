@@ -138,7 +138,8 @@ public class EngineTests
         var sw = System.Diagnostics.Stopwatch.StartNew();
         await engine.StopAllAsync();
         sw.Stop();
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(1), $"stop took {sw.Elapsed}");
+        // FakeAcs would answer only after 30 s: a generous ceiling still proves stop cancels instead of waiting (CI-safe; review m14).
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"stop took {sw.Elapsed}");
         Assert.Equal(CpeStateKind.Stopped, cpe.State.Kind);
         Assert.Empty(engine.Cpes);
         Assert.Equal(SessionOutcome.Canceled, store.GetAll().Single().Outcome);
@@ -213,14 +214,17 @@ public class EndToEndTests
             .ExpectEmpty().Send(new GetParameterValuesMessage(["InternetGatewayDevice.DeviceInfo."]))
             .ExpectResponse<GetParameterValuesResponseMessage>().End204());
         var store = Kit.NewStore();
-        var factory = new ProxyServerFactory(new CwmpParser(), new MessageSummarizer(), new UpstreamHandlerFactory(), store, TimeProvider.System, NullLoggerFactory.Instance);
+        var proxyTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow); // drives the proxy's grace sweep (no wall-clock wait)
+        var factory = new ProxyServerFactory(new CwmpParser(), new MessageSummarizer(), new UpstreamHandlerFactory(), store, proxyTime, NullLoggerFactory.Instance);
         await using var proxy = factory.Create(new ProxySettings(BindAddress: "127.0.0.1", Port: 0, UpstreamUrl: acs.BaseUri.ToString()), new CaptureSettings());
         await proxy.StartAsync(default);
         await using var engine = Kit.Engine(store);
         var cpe = (await engine.StartProfileAsync(Kit.Profile($"http://127.0.0.1:{proxy.BoundPort}/acs"), sendBootNow: true, default)).Single();
 
-        Assert.True(await TestUtil.WaitUntilAsync(() => store.GetAll().Count(s => s.Ended is not null) == 2, timeoutMs: 15_000), "both sessions should end");
-        // The simulator does not send a trailing empty POST, so the proxy completes its session via the 2 s grace sweep.
+        Assert.True(await TestUtil.WaitUntilAsync(() => store.GetAll().Any(s => s.Source == SessionSource.Simulator && s.Ended is not null)), "simulator session should end");
+        // The simulator does not send a trailing empty POST, so the proxy completes its session via the grace sweep.
+        proxyTime.Advance(CpeSessionTracker.CompletionGrace + CpeSessionTracker.SweepInterval);
+        Assert.True(await TestUtil.WaitUntilAsync(() => store.GetAll().Count(s => s.Ended is not null) == 2), "both sessions should end");
         Assert.Empty(acs.Violations);
         var sim = store.GetAll().Single(s => s.Source == SessionSource.Simulator);
         var prx = store.GetAll().Single(s => s.Source == SessionSource.Proxy);
