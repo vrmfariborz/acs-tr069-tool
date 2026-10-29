@@ -238,7 +238,8 @@ public sealed class CpeSessionTracker : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(notes);
         if (result.IsFailure)
         {
-            return SessionOutcome.UpstreamError;
+            // Proxy stopped while the exchange was in flight → Canceled (§3.6.4), not an upstream problem (review m1).
+            return result.Error?.Kind == UpstreamErrorKind.Canceled ? SessionOutcome.Canceled : SessionOutcome.UpstreamError;
         }
         var status = result.StatusCode!.Value;
         session.AwaitingFinalEmpty = false;

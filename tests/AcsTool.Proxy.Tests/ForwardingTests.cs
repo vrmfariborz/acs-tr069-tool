@@ -373,5 +373,26 @@ public class ForwardingTests
         Assert.DoesNotContain("secret", s.TargetUrl, StringComparison.Ordinal);
         Assert.DoesNotContain("user", s.TargetUrl, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task ProxyStoppedDuringInFlightExchange_SessionCanceled()
+    {
+        await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s.ExpectInform().Delay(TimeSpan.FromSeconds(30)).RespondInformResponse());
+        await using var h = await ProxyHarness.StartAsync(acs);
+        using var client = ProxyHarness.CpeClient();
+        var pending = client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()));
+        Assert.True(await TestUtil.WaitUntilAsync(() => acs.Received.Count == 1));
+        await h.Server.StopAsync(default);
+        try
+        {
+            (await pending).Dispose();
+        }
+        catch (HttpRequestException)
+        {
+            // the connection may be closed by the stopping server
+        }
+        var s = Assert.Single(h.Store.GetAll());
+        Assert.Equal(SessionOutcome.Canceled, s.Outcome);
+    }
 }
 
