@@ -65,3 +65,21 @@ Status, deviations from `docs/PLAN.md` and known gaps. Every deviation includes 
 4. Select a session. The Raw tab shows the XML, the Pretty toggle formats it, and Authorization is redacted until revealed.
 5. Close the window. The proxy and simulator stop, and the process exits within a few seconds.
 6. Run `AcsTool.exe --smoke-exit`. It exits with code 0.
+
+## Review fixes (docs/REVIEW_M0-M4.md, branch fix/review-m0-m4)
+
+Fixed, each with tests: M1, M2, M3, M4, M5, M6, m1, m5, m6, m8, m10, m11, m12 (partly), m13, m14, plus the user-reported clipped-tab layout bug.
+
+Decisions and deviations:
+- **M1/M2:** Persisted settings reach their consumers reactively through `SettingsHolder.Changed`, not by loading settings before DI resolution. Loading twice would lose the corrupt-settings-file banner. Consumers are the Proxy tab (only while stopped and editable), store limits, feed size/order and the status bar. A changed simulator concurrency limit takes effect the next time a profile starts while no CPE is running. The old gate is not disposed, because in-flight waiters may still hold it.
+- **M4:** Summaries are still parsed from the full captured body, but each list keeps at most 200 items plus an "… and K more" field. The Raw view holds the full captured body. The capture budget is an estimate: body bytes + 2 × (header and summary field characters) + warnings.
+- **M6:** While paused, the feed coalesces updates by session id. Above 10,000 pending ids, or when a resync batch arrives, it drops the list and does a full resync from the store on resume. Sessions evicted during the pause therefore do not reappear.
+- **m8:** An undecryptable DPAPI password throws `SecretUnprotectException`. The editor shows a warning and keeps the stored ciphertext unless the password is retyped, and Start is refused with a validation error. Real DPAPI behaviour can't be tested on Linux, so tests use a fake protector.
+- **m10:** Upstream URLs containing user:password@ are rejected by both validators. As a second line of defence, the proxy redacts userinfo in logs and session targets (warning event 1013).
+- **m13:** Upstream Set-Cookie Path values that the CPE's request path doesn't path-match (RFC 6265 §5.1.4) become `Path=/`, with a note on the exchange. The earlier note on cookie paths was corrected.
+- **m14:** Idle/grace and end-to-end tests now use `FakeTimeProvider`. Coverage was added for Basic auth through the proxy, the ManagedPerCpe cookie jar, and byte-identical responses with multi-valued headers.
+- **UI layout:** Every tab (main and settings windows) is hosted in a ScrollViewer. Views are bound to the viewport size, with MinWidth/MinHeight, so star rows and DataGrid virtualization still work when there is room, and scrollbars appear only when the window is smaller. The simulator profile editor also scrolls on its own. Fixed widths were replaced by star/Auto + MinWidth. Rendering can't be checked on Linux; `XamlLayoutTests` lint the XAML instead, and visual confirmation on Windows is still pending.
+
+Deferred:
+- **m12 (part):** The upstream `SocketsHttpHandler` is still created inside the tracker lock. The custom CA is now preloaded at Start (a missing or invalid file fails Start with `ProxyStartException`), so creating the handler does no I/O. Moving it out of the lock would mean restructuring `Resolve`, which is out of proportion to the remaining risk.
+- **Outside the requested scope, unchanged:** m2 (a late trailing empty POST becomes an orphan row), m3 (cookie-pair correlation ambiguity), m4 (simulator capture shows post-response cookies), m7 (pretty-print race), m9 (plaintext password TextBox), m15 (Settings window ✕ / OnClosing robustness), and nits n1–n8.
