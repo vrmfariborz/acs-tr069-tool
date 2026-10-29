@@ -96,6 +96,27 @@ public class ProxyServerTests
         Assert.Contains("could not be loaded", ex.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("empty")]
+    [InlineData("garbage")]
+    public async Task Start_CustomCaFileEmptyOrGarbage_ProxyStartExceptionWithClearMessage(string kind)
+    {
+        // TesterBot chore/net10: with the old byte[] ctor an empty file threw NullReferenceException past PrepareTls' catch.
+        await using var acs = await FakeAcs.StartAsync();
+        var path = Path.Combine(Path.GetTempPath(), "acstool-ca-" + kind + "-" + Guid.NewGuid().ToString("N") + ".pem");
+        await File.WriteAllBytesAsync(path, kind == "empty" ? [] : [0x30, 0x82, 0x01, 0x02, 0xFF, 0x00, 0x13]);
+        try
+        {
+            var ex = await Assert.ThrowsAsync<ProxyStartException>(() => ProxyHarness.StartAsync(acs,
+                s => s with { Tls = AcsTool.Core.Net.TlsOptions.Default with { Mode = AcsTool.Core.Net.TlsValidationMode.CustomCa, CustomCaPath = path } }));
+            Assert.Contains("could not be loaded", ex.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public async Task Start_InvalidBindAddress_AddressNotAvailable()
     {
