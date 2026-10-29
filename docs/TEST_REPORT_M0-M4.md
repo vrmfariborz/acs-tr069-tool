@@ -424,13 +424,13 @@ Exact failure texts:
 
 In production this only delays an update by one flush (harmless). The test assumes, without waiting for it, that everything written before `Advance` is in that flush. Its `WaitUntilAsync(() => pump.IsCollecting)` returns at once, because the pump is usually already collecting.
 
-**Deterministic repro:** `TesterFeedPumpRaceTests` (skipped, FLAKY-01). It holds the pool's workers for a moment, writes one change, then calls `Advance`. 5/5 runs fail with *"after dispatch 1 the feed has [00D09E-EARLY]; LATE missed the flush"*.
+**Deterministic repro:** `TesterFeedPumpRaceTests` (skipped, FLAKY-01; *un-skipped since 2026-10-29, see the update below*). It holds the pool's workers for a moment, writes one change, then calls `Advance`. 5/5 runs fail with *"after dispatch 1 the feed has [00D09E-EARLY]; LATE missed the flush"*.
 
 **Fixes:**
 - **Proposed fix (src, for CoderBot):** one line, `Drain(reader, pending, ref cleared);` after the collect loop and before `flushCts.CancelAsync()`. In a throwaway worktree (deleted afterwards) the repro and all 8 FeedPump tests passed 5/5 with it, and `CI=true` built Presentation with 0 warnings.
 - **Alternative (test only):** before each `time.Advance`, wait for `store.Changes.Count == 0` (the bounded channel can count).
 
-> **Update 2026-10-29:** the proposed fix landed on main (`3131a48`, merged in `93980dc`) and `TesterFeedPumpRaceTests` is **no longer skipped**; it runs and passes in every build. The skip counts above are as recorded at `b8d33bb`. Current skips are the NET10-01/02 repros, plus the DNS test where every name resolves. On `fix/timeout-test-hardening` the live client-timeout tests also gained a 30 s hang guard and elapsed-time bounds (the never-responding-server test: 2.5–20 s for its 3 s timeout).
+> **Update 2026-10-29:** the proposed fix landed on main (`3131a48`, merged in `93980dc`) and `TesterFeedPumpRaceTests` is **no longer skipped**; it runs and passes in every build. The skip counts above are as recorded at `b8d33bb`. Current skips are the NET10-01/02 repros, plus the DNS test where every name resolves. On `fix/timeout-test-hardening` the live client-timeout tests also gained a 30 s hang guard and elapsed-time bounds (the never-responding-server test: 2.9–20 s for its 3 s timeout, i.e. at least the timeout minus 100 ms).
 
 ### 12.5 Windows smoke checklist additions (after W-1…W-30)
 
