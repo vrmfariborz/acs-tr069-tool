@@ -113,6 +113,11 @@ Deferred after the final review (re-review 3, @ 1b8fe03):
 - **R3-n1:** The Windows job now runs `./build.ps1 -NoCoverage` (restore, build and all non-Perf tests, including the `ACSTOOL_SKIP_NET_TIMEOUT` guard) before publishing and `--smoke-exit`.
 - **First test run on Windows** (found by R3-n1): two tests failed only on the Windows runner.
   - `Build_Inform_MatchesGoldenFile`: the checkout's `core.autocrlf` converted the fixtures to CRLF. `.gitattributes` now marks `tests/fixtures/** -text`, so fixtures stay byte-exact.
-  - `FailedSession_ErrorStateKeepsEvents_ManualRetryIncrementsRetryCount` failed on a real ordering race. `SimulatedCpe` bumped `SessionsRun` before the final state change, so an observer could see the new count while the state was still InSession. The count is now bumped after the event bookkeeping and just before the final `SetState`, so the `StateChanged` notification the Running CPEs row refreshes from carries the new count. The engine tests now wait for both the count and the final state.
+  - `FailedSession_ErrorStateKeepsEvents_ManualRetryIncrementsRetryCount` failed because of an observer race in the tests (review n1).
+    - **The flake:** `SimulatedCpe` bumps `SessionsRun` before it publishes the final state, both before and after this branch. A test that waited only for the count and then asserted the state could see InSession.
+    - **The real fix:** the tests now wait for both the count and the final state. This applies to `TransportAndEngineTests` and, since fix/ci-followups (n2), `TesterScenarioTests`.
+    - **Supporting change:** the increment now comes after the event bookkeeping and just before `SetState`, so every `StateChanged` observer sees a consistent snapshot: count, `LastResult` and pending events. The Running CPEs row, which reads the count inside `StateChanged`, therefore shows the new value.
+    - **Pinned by tests:** `StateChanged_CarriesNewSessionsRun_ForFinalState` and `StateChanged_CarriesNewSessionsRun_ForErrorState` deterministically record (state, count) pairs in the handler (m1).
+    - **Thread safety:** `SessionsRun` is written with `Interlocked.Increment` and read with `Volatile.Read` (n2).
   - Network tests needed no Windows skip.
 - **Result:** CI is green on both jobs with SDK 8.0.427. Each job runs Core 308, Proxy 97, Simulator 65 and Presentation 54 tests with 0 skipped; on the GitHub runners the DNS test actually runs.
