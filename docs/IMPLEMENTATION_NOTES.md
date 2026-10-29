@@ -121,3 +121,4 @@ Deferred after the final review (re-review 3, @ 1b8fe03):
     - **Thread safety:** `SessionsRun` is written with `Interlocked.Increment` and read with `Volatile.Read` (n2).
   - Network tests needed no Windows skip.
 - **Result:** CI is green on both jobs with SDK 8.0.427. Each job runs Core 308, Proxy 97, Simulator 65 and Presentation 54 tests with 0 skipped; on the GitHub runners the DNS test actually runs.
+- **Actions runtime (fix/ci-followups):** `actions/checkout` moved from v4 to v7 and `actions/setup-dotnet` from v4 to v6, the current majors, both on `node24`. The v4 actions targeted the deprecated Node 20 and were forced onto Node 24 with a warning annotation. The v6/v7 release notes list only ESM and dependency migrations plus fork-PR hardening, no input changes; `global-json-file` is still supported.
