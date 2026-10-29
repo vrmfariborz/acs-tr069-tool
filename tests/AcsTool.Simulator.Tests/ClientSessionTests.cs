@@ -26,6 +26,18 @@ public class ClientSessionTests
     }
 
     [Fact]
+    public async Task UnexpectedException_EndsStoredSessionAsProtocolError()
+    {
+        AcceptInform().Then(_ => throw new InvalidOperationException("builder exploded"));
+        var r = await Run();
+        Assert.Equal(SessionOutcome.ProtocolError, r.Outcome);
+        var s = _store.Get(r.SessionId)!;
+        Assert.NotNull(s.Ended);
+        Assert.Equal(SessionOutcome.ProtocolError, s.Outcome);
+        Assert.Contains(s.Notes, n => n.Contains("builder exploded", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ResponseCapture_TruncatedToTransportLimit()
     {
         _t.Then(p => FakeTransport.Ok(Kit.Builder.Build(new InformResponseMessage(1), CwmpVersion.V1_0, new CwmpHeader(p.Envelope!.Header.Id))) with { MaxCapturedBodyBytes = 64 })

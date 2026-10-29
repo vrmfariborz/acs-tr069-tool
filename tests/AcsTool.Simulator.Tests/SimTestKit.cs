@@ -60,8 +60,16 @@ public sealed class RecordingSink(InMemorySessionStore inner) : ISessionSink
 {
     public List<string> Calls { get; } = [];
 
+    /// <summary>Number of upcoming StartSession calls that throw (simulates an unexpected internal failure).</summary>
+    public int FailStartSessions { get; set; }
+
     public Guid StartSession(SessionStart start)
     {
+        if (FailStartSessions > 0)
+        {
+            FailStartSessions--;
+            throw new InvalidOperationException("sink boom");
+        }
         Calls.Add("Start");
         return inner.StartSession(start);
     }

@@ -145,6 +145,21 @@ public class EngineTests
     }
 
     [Fact]
+    public async Task UnexpectedSessionException_LoopSurvives_NextTriggerRuns()
+    {
+        await using var acs = await FakeAcs.StartAsync(o => o.Script = s => s.ExpectInform().RespondInformResponse().ExpectEmpty().End204());
+        var store = Kit.NewStore();
+        var sink = new RecordingSink(store) { FailStartSessions = 1 };
+        await using var engine = new SimulationEngine(Kit.Services(sink), new SettingsHolder(), NullLogger<SimulationEngine>.Instance);
+        var cpe = (await engine.StartProfileAsync(Kit.Profile(acs.Url()), sendBootNow: true, default)).Single();
+        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.State.Kind == CpeStateKind.Error));
+        Assert.Contains("sink boom", cpe.State.LastError, StringComparison.Ordinal);
+        Assert.True(cpe.Post(new CpeTrigger.Manual([])));
+        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 1 && cpe.State.Kind == CpeStateKind.Idle), cpe.State.ToString());
+        Assert.Equal(SessionOutcome.Completed, store.GetAll().Single().Outcome);
+    }
+
+    [Fact]
     public async Task FailedSession_ErrorStateKeepsEvents_ManualRetryIncrementsRetryCount()
     {
         var l = new TcpListener(IPAddress.Loopback, 0);
