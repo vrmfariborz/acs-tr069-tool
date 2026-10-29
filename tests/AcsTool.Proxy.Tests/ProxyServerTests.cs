@@ -62,6 +62,31 @@ public class ProxyServerTests
     }
 
     [Fact]
+    public async Task Start_Localhost_BindsLoopback()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        await using var h = await ProxyHarness.StartAsync(acs, s => s with { BindAddress = "localhost" });
+        Assert.Equal(ProxyState.Running, h.Server.State);
+        Assert.Contains(h.Server.BoundUrls, u => u.StartsWith("http://127.0.0.1:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Start_UnexpectedFailure_FaultedAndCleanedUp_ThenRestartable()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        var factory = new ServiceCollection().AddLogging().AddAcsToolCore().AddAcsToolProxy().BuildServiceProvider().GetRequiredService<ProxyServerFactory>();
+        await using var bad = factory.Create(new ProxySettings(BindAddress: "127.0.0.1", Port: 70_000, UpstreamUrl: acs.BaseUri.ToString()), new CaptureSettings());
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => bad.StartAsync(default));
+        Assert.Equal(ProxyState.Faulted, bad.State);
+        await bad.StopAsync(default); // nothing leaked: stop is a clean no-op
+        Assert.Equal(ProxyState.Stopped, bad.State);
+        await using var good = factory.Create(new ProxySettings(BindAddress: "127.0.0.1", Port: 0, UpstreamUrl: acs.BaseUri.ToString()), new CaptureSettings());
+        await good.StartAsync(default);
+        Assert.Equal(ProxyState.Running, good.State);
+        await good.StopAsync(default);
+    }
+
+    [Fact]
     public async Task Start_InvalidBindAddress_AddressNotAvailable()
     {
         await using var acs = await FakeAcs.StartAsync();

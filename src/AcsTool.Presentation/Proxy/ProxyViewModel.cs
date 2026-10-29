@@ -197,6 +197,17 @@ public sealed partial class ProxyViewModel : ObservableValidator, IAsyncDisposab
             State = ProxyState.Faulted;
             return false;
         }
+#pragma warning disable CA1031 // any start failure must leave the tab usable (Faulted + banner), never stuck in Starting (review m11)
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _log.LogError(1102, ex, "Proxy failed to start on {Address}:{Port}", proxy.BindAddress, proxy.Port);
+            server.StateChanged -= OnServerStateChanged;
+            await server.DisposeAsync();
+            _banners.Show(BannerKind.Error, "Proxy failed to start: " + ex.Message, BindBannerKey);
+            State = ProxyState.Faulted;
+            return false;
+        }
     }
 
     public async Task StopAsync()
