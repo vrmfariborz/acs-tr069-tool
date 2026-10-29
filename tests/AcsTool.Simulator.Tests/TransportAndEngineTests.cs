@@ -110,7 +110,14 @@ public class EngineTests
         cpe.StateChanged += (_, s) => { lock (states) { states.Add(s.Kind); } };
         Assert.Equal(CpeStateKind.Idle, cpe.State.Kind);
         cpe.Post(new CpeTrigger.Manual([new EventStruct(EventCodes.Boot)]));
-        Assert.True(await TestUtil.WaitUntilAsync(() => cpe.SessionsRun == 1 && cpe.State.Kind == CpeStateKind.Idle), "session did not finish");
+        // State is written before StateChanged runs: also wait for the handler to have recorded Idle (TesterBot).
+        Assert.True(await TestUtil.WaitUntilAsync(() =>
+        {
+            lock (states)
+            {
+                return cpe.SessionsRun == 1 && cpe.State.Kind == CpeStateKind.Idle && states.Contains(CpeStateKind.Idle);
+            }
+        }), "session did not finish");
         Assert.Empty(acs.Violations);
         Assert.Equal(SessionOutcome.Completed, cpe.LastResult!.Outcome);
         Assert.Equal("ntp.acs.test", cpe.Store.Get("InternetGatewayDevice.Time.NTPServer1")!.Value);
