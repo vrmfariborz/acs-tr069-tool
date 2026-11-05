@@ -191,3 +191,12 @@ From the BUG TRIAGE in the user-guide review (items a, d, f, g; b, c, e and h ar
 - **No load at startup:** Presentation smoke tests assert that neither SharpPcap nor PacketDotNet is loaded after building the shell, `InitializeAsync` and the `--smoke-exit` sequence. No Presentation test may call `Probe()` on the real backend.
 - **Review fixes done:** m1 (docs reworded), m2 (assembly-load smoke tests), m3 (exact SharpPcap copyright), m4 (Available with 0 devices gets a repair hint), n1 (task scope notes), n2 (design section refs), n3 (`LibPcapLiveDeviceList.New()`, one enumeration, no static), n4 (`libpcap.so.0` candidate), Known (`THIRD-PARTY-NOTICES.md` ships next to `AcsTool.exe`).
 - **Deferred:** n5 (friendlier BadImageFormat / wrong-architecture message) goes with the PT1.15 banners. n6: notices for the non-packet-capture packages (Serilog, CommunityToolkit.Mvvm, Microsoft.Extensions) are a follow-up; the file's intro now says it covers packet capture only. PT0.1 spike findings and `tests/fixtures/pcap/` are still pending from `spike/pt0-npcap`.
+
+## Transport endpoints on exchanges (branch feat/packet-trace, PT0.3)
+
+Closes design gaps G1–G3 in Core only (design §6.2); the proxy and simulator start filling them in PT0.4.
+
+- `ExchangeEndpoints` (downstream connection id / remote / local, upstream local / remote, upstream connection serial) and `ExchangeRecord.Endpoints` (init property, null until reported).
+- `ISessionSink.SetExchangeEndpoints` is a default no-op interface method, so existing sinks compile unchanged. Note for PT0.4: the delegating test sinks (`RecordingSink` in Simulator.Tests, `EndThrowsSink` in Proxy.Tests) therefore drop endpoints until they forward the call.
+- `InMemorySessionStore.SetExchangeEndpoints` replaces the record under `_gate`, raises one `Updated`, leaves `CapturedBytes` unchanged, and ignores unknown sessions or sequence numbers. Endpoints are stored with IPv4-mapped IPv6 normalised (`EndPointUtil.Normalize`, the same rule as `ProxyRequestHandler.Snapshot`).
+- `PhaseTracker.LocalEndPoint` and `ConnectionSerial`: `BeginConnect` increments the serial and clears the local endpoint (so a failed connect reports none); `Reset` (per exchange, pooled reuse) keeps both. `ConnectCallbackFactory` passes `socket.LocalEndPoint` to `MarkConnected`.

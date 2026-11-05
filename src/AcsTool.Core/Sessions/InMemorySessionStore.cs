@@ -196,6 +196,28 @@ public sealed class InMemorySessionStore : ISessionStore
         NotifyRemoved(evicted);
     }
 
+    public void SetExchangeEndpoints(Guid sessionId, int seq, ExchangeEndpoints endpoints)
+    {
+        ArgumentNullException.ThrowIfNull(endpoints);
+        var normalized = endpoints.Normalized();
+        lock (_gate)
+        {
+            if (!_byId.TryGetValue(sessionId, out var node))
+            {
+                return;
+            }
+            var s = node.Value;
+            var idx = seq - 1;
+            if (idx < 0 || idx >= s.Exchanges.Count)
+            {
+                return;
+            }
+            // Budget impact is ignored (< 200 B per exchange, design §6.2): CapturedBytes is unchanged.
+            node.Value = s with { Exchanges = s.Exchanges.SetItem(idx, s.Exchanges[idx] with { Endpoints = normalized }) };
+        }
+        Notify(sessionId, SessionChangeKind.Updated);
+    }
+
     public void UpdateSession(Guid sessionId, Func<SessionSnapshot, SessionSnapshot> patch)
     {
         ArgumentNullException.ThrowIfNull(patch);

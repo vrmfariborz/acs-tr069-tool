@@ -219,3 +219,204 @@ public class LiveNetworkClassificationTests
     }
 }
 
+public class PhaseTrackerEndpointTests
+{
+    [Fact]
+    public void New_NoConnection_SerialZero_LocalNull()
+    {
+        var t = new PhaseTracker();
+
+        Assert.Equal(0, t.ConnectionSerial);
+        Assert.Null(t.LocalEndPoint);
+    }
+
+    [Fact]
+    public void BeginConnect_IncrementsSerial_ClearsLocal_ResetKeepsBoth()
+    {
+        var t = new PhaseTracker();
+        t.BeginConnect();
+        t.MarkConnected(TimeSpan.FromMilliseconds(1), IPEndPoint.Parse("127.0.0.1:7557"), IPEndPoint.Parse("127.0.0.1:50000"));
+
+        t.Reset(); // per-exchange reset on a pooled connection
+
+        Assert.Equal(1, t.ConnectionSerial);
+        Assert.Equal(IPEndPoint.Parse("127.0.0.1:50000"), t.LocalEndPoint);
+
+        t.BeginConnect(); // a new socket; until it connects there is no local endpoint (connect failure → upstream local null)
+
+        Assert.Equal(2, t.ConnectionSerial);
+        Assert.Null(t.LocalEndPoint);
+    }
+
+    [Fact]
+    public void MarkConnected_IPv4MappedLocal_IsNormalised()
+    {
+        var t = new PhaseTracker();
+        t.BeginConnect();
+
+        t.MarkConnected(TimeSpan.Zero, IPEndPoint.Parse("127.0.0.1:7557"), new IPEndPoint(IPAddress.Loopback.MapToIPv6(), 50001));
+
+        Assert.Equal(IPEndPoint.Parse("127.0.0.1:50001"), t.LocalEndPoint);
+    }
+
+    [Theory]
+    [InlineData("[::ffff:192.0.2.7]:7547", "192.0.2.7:7547")]
+    [InlineData("192.0.2.7:7547", "192.0.2.7:7547")]
+    [InlineData("[2001:db8::1]:7547", "[2001:db8::1]:7547")]
+    public void EndPointUtil_Normalize(string input, string expected)
+    {
+        Assert.Equal(IPEndPoint.Parse(expected), EndPointUtil.Normalize(IPEndPoint.Parse(input)));
+    }
+
+    [Fact]
+    public void EndPointUtil_Normalize_Null_IsNull()
+    {
+        Assert.Null(EndPointUtil.Normalize((IPEndPoint?)null));
+        Assert.Null(EndPointUtil.Normalize((IPAddress?)null));
+    }
+}
+
+public sealed class LiveConnectEndpointTests : IAsyncDisposable
+{
+    private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+    private readonly CancellationTokenSource _cts = new();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<IPEndPoint> _accepted = new();
+    private readonly Task _serverLoop;
+
+    public LiveConnectEndpointTests()
+    {
+        _listener.Start();
+        _serverLoop = ServeAsync();
+    }
+
+    private int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+
+    [Fact]
+    public async Task Connect_RecordsLocalEndPoint_Serial_PooledReuseKeeps_NewSocketIncrements()
+    {
+        var tracker = new PhaseTracker();
+        using var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = ConnectCallbackFactory.Create(TimeSpan.FromSeconds(5), () => tracker),
+            UseProxy = false,
+        };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+
+        // 1st request: a new socket.
+        (await client.GetAsync(new Uri($"http://127.0.0.1:{Port}/keep"))).Dispose();
+        var first = tracker.LocalEndPoint;
+        Assert.NotNull(first);
+        Assert.NotEqual(0, first.Port);
+        Assert.Equal(IPAddress.Loopback, first.Address);
+        Assert.Equal(1, tracker.ConnectionSerial);
+        Assert.Equal(new IPEndPoint(IPAddress.Loopback, Port), tracker.RemoteEndPoint);
+        Assert.Contains(first, _accepted); // the server saw our recorded local endpoint as its remote
+
+        // 2nd request: pooled reuse of the same socket (server answered keep-alive); this one asks the server to close after.
+        tracker.Reset();
+        (await client.GetAsync(new Uri($"http://127.0.0.1:{Port}/close"))).Dispose();
+        Assert.Equal(1, tracker.ConnectionSerial);
+        Assert.Equal(first, tracker.LocalEndPoint);
+        Assert.Single(_accepted);
+
+        // 3rd request: the server closed the connection, so the handler opens a new socket.
+        tracker.Reset();
+        (await client.GetAsync(new Uri($"http://127.0.0.1:{Port}/keep"))).Dispose();
+        Assert.Equal(2, tracker.ConnectionSerial);
+        Assert.NotNull(tracker.LocalEndPoint);
+        Assert.NotEqual(first, tracker.LocalEndPoint);
+        Assert.Contains(tracker.LocalEndPoint!, _accepted);
+    }
+
+    [Fact]
+    public async Task Connect_Refused_LocalEndPointNull_SerialCounted()
+    {
+        var closed = new TcpListener(IPAddress.Loopback, 0);
+        closed.Start();
+        var port = ((IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+        var tracker = new PhaseTracker();
+        using var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = ConnectCallbackFactory.Create(TimeSpan.FromSeconds(5), () => tracker),
+            UseProxy = false,
+        };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync(new Uri($"http://127.0.0.1:{port}/")));
+
+        Assert.Equal(1, tracker.ConnectionSerial);
+        Assert.Null(tracker.LocalEndPoint);
+    }
+
+    private async Task ServeAsync()
+    {
+        try
+        {
+            while (!_cts.IsCancellationRequested)
+            {
+                var client = await _listener.AcceptTcpClientAsync(_cts.Token);
+                _accepted.Enqueue((IPEndPoint)client.Client.RemoteEndPoint!);
+                _ = HandleAsync(client);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (SocketException)
+        {
+        }
+    }
+
+    private async Task HandleAsync(TcpClient client)
+    {
+        using (client)
+        {
+            var stream = client.GetStream();
+            var buffer = new byte[4096];
+            var pending = new System.Text.StringBuilder();
+            try
+            {
+                while (!_cts.IsCancellationRequested)
+                {
+                    var n = await stream.ReadAsync(buffer, _cts.Token);
+                    if (n == 0)
+                    {
+                        return;
+                    }
+                    pending.Append(System.Text.Encoding.ASCII.GetString(buffer, 0, n));
+                    int end;
+                    while ((end = pending.ToString().IndexOf("\r\n\r\n", StringComparison.Ordinal)) >= 0)
+                    {
+                        var head = pending.ToString(0, end);
+                        pending.Remove(0, end + 4);
+                        var close = head.StartsWith("GET /close", StringComparison.Ordinal);
+                        var response = close
+                            ? "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            : "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+                        await stream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(response), _cts.Token);
+                        if (close)
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or SocketException)
+            {
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _cts.CancelAsync();
+        _listener.Stop();
+        await _serverLoop;
+        _cts.Dispose();
+    }
+}
+

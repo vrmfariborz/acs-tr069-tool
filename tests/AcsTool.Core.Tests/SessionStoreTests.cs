@@ -1,4 +1,6 @@
+using System.Net;
 using AcsTool.Core.Cwmp;
+using AcsTool.Core.Net;
 using AcsTool.Core.Parsing;
 using AcsTool.Core.Sessions;
 using AcsTool.Core.Settings;
@@ -208,5 +210,104 @@ public class SessionStoreTests
         var snap = store.Get(id)!;
         Assert.Equal(["hello"], snap.Notes);
         Assert.Equal(SessionOutcome.InProgress, snap.Outcome);
+    }
+
+    private static ExchangeEndpoints Endpoints(string downstreamRemote = "192.0.2.5:40000") =>
+        new("conn-1", IPEndPoint.Parse(downstreamRemote), IPEndPoint.Parse("192.0.2.1:7547"),
+            IPEndPoint.Parse("127.0.0.1:50123"), IPEndPoint.Parse("127.0.0.1:7557"), 1);
+
+    [Fact]
+    public void SetExchangeEndpoints_ExistingExchange_SetsAndRaisesOneUpdated()
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var store = new InMemorySessionStore(new CaptureSettings(), time);
+        var id = store.StartSession(Start());
+        var seq = store.AddExchange(id, Cap(10), MessageSummary.None, time.GetUtcNow());
+        store.CompleteExchange(id, seq, Cap(5), MessageSummary.None, null, new ExchangeTimings(time.GetUtcNow()));
+        var before = store.Get(id)!;
+        var statsBefore = store.Stats;
+        Drain(store);
+
+        store.SetExchangeEndpoints(id, seq, Endpoints());
+
+        var after = store.Get(id)!;
+        Assert.Equal(Endpoints(), after.Exchanges[0].Endpoints);
+        Assert.Equal([new SessionChange(id, SessionChangeKind.Updated)], Drain(store));
+        Assert.Equal(before.CapturedBytes, after.CapturedBytes);
+        Assert.Equal(before.Exchanges[0] with { Endpoints = Endpoints() }, after.Exchanges[0]);
+        Assert.Equal(statsBefore, store.Stats);
+    }
+
+    [Fact]
+    public void SetExchangeEndpoints_IPv4MappedIPv6_IsNormalised()
+    {
+        var store = new InMemorySessionStore(new CaptureSettings(), TimeProvider.System);
+        var id = store.StartSession(Start());
+        var seq = store.AddExchange(id, Cap(1), MessageSummary.None, DateTimeOffset.UnixEpoch);
+        var mapped = Endpoints() with
+        {
+            DownstreamRemote = new IPEndPoint(IPAddress.Parse("192.0.2.5").MapToIPv6(), 40000),
+            UpstreamLocal = new IPEndPoint(IPAddress.Loopback.MapToIPv6(), 50123),
+        };
+
+        store.SetExchangeEndpoints(id, seq, mapped);
+
+        Assert.Equal(Endpoints(), store.Get(id)!.Exchanges[0].Endpoints);
+    }
+
+    [Fact]
+    public void SetExchangeEndpoints_UnknownSessionOrSeq_IsNoOp()
+    {
+        var store = new InMemorySessionStore(new CaptureSettings(), TimeProvider.System);
+        var id = store.StartSession(Start());
+        store.AddExchange(id, Cap(1), MessageSummary.None, DateTimeOffset.UnixEpoch);
+        Drain(store);
+
+        store.SetExchangeEndpoints(Guid.NewGuid(), 1, Endpoints());
+        store.SetExchangeEndpoints(id, 0, Endpoints());
+        store.SetExchangeEndpoints(id, 2, Endpoints());
+
+        Assert.Null(store.Get(id)!.Exchanges[0].Endpoints);
+        Assert.Empty(Drain(store));
+    }
+
+    [Fact]
+    public void SetExchangeEndpoints_LaterCall_ReplacesEarlier()
+    {
+        var store = new InMemorySessionStore(new CaptureSettings(), TimeProvider.System);
+        var id = store.StartSession(Start());
+        var seq = store.AddExchange(id, Cap(1), MessageSummary.None, DateTimeOffset.UnixEpoch);
+
+        store.SetExchangeEndpoints(id, seq, Endpoints());
+        store.SetExchangeEndpoints(id, seq, Endpoints("192.0.2.5:40001"));
+
+        Assert.Equal(40001, store.Get(id)!.Exchanges[0].Endpoints!.DownstreamRemote!.Port);
+    }
+
+    [Fact]
+    public void ISessionSink_SetExchangeEndpoints_DefaultIsNoOp()
+    {
+        // Sinks written before PT0.3 (test fakes, decorators) compile unchanged and silently ignore endpoints.
+        ISessionSink sink = new LegacySink();
+
+        sink.SetExchangeEndpoints(Guid.NewGuid(), 1, Endpoints());
+
+        Assert.Equal(0, ((LegacySink)sink).Calls);
+    }
+
+    private sealed class LegacySink : ISessionSink
+    {
+        public int Calls { get; private set; }
+
+        public Guid StartSession(SessionStart start) { Calls++; return Guid.NewGuid(); }
+
+        public int AddExchange(Guid sessionId, HttpMessageCapture request, MessageSummary summary, DateTimeOffset started) { Calls++; return 1; }
+
+        public void CompleteExchange(Guid sessionId, int seq, HttpMessageCapture? response, MessageSummary? summary,
+            UpstreamError? error, ExchangeTimings timings, IReadOnlyList<string>? notes = null) => Calls++;
+
+        public void UpdateSession(Guid sessionId, Func<SessionSnapshot, SessionSnapshot> patch) => Calls++;
+
+        public void EndSession(Guid sessionId, SessionOutcome outcome) => Calls++;
     }
 }

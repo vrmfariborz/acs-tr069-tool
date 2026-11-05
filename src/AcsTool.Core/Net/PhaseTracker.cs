@@ -6,6 +6,7 @@ namespace AcsTool.Core.Net;
 /// Tracks how far the current upstream exchange got. Written by the ConnectCallback / TLS validation callback,
 /// read by the error classifier. Connection facts persist across <see cref="Reset"/> so a reused pooled
 /// connection is reported as already connected; a new connection attempt calls <see cref="BeginConnect"/>.
+/// <see cref="ConnectionSerial"/> counts connection attempts (PT0.3): pooled reuse keeps it, each new socket increments it.
 /// </summary>
 public sealed class PhaseTracker
 {
@@ -17,8 +18,16 @@ public sealed class PhaseTracker
     private TimeSpan? _dns;
     private TimeSpan? _connect;
     private TimeSpan? _toHeaders;
+    private IPEndPoint? _localEndPoint;
+    private long _connectionSerial;
 
     public IPEndPoint? RemoteEndPoint { get; private set; }
+
+    /// <summary>Local (ephemeral) endpoint of the current upstream socket, IPv4-mapped IPv6 normalised; null until connected.</summary>
+    public IPEndPoint? LocalEndPoint { get { lock (_lock) { return _localEndPoint; } } }
+
+    /// <summary>Number of connection attempts so far (0 = none); the current socket's serial once connected.</summary>
+    public long ConnectionSerial { get { lock (_lock) { return _connectionSerial; } } }
 
     public IReadOnlyList<IPAddress> ResolvedAddresses { get; private set; } = [];
 
@@ -42,6 +51,8 @@ public sealed class PhaseTracker
             _dnsDone = false;
             _connected = false;
             _tlsDone = false;
+            _localEndPoint = null;
+            _connectionSerial++;
         }
     }
 
@@ -55,7 +66,7 @@ public sealed class PhaseTracker
         }
     }
 
-    public void MarkConnected(TimeSpan d, IPEndPoint? ep)
+    public void MarkConnected(TimeSpan d, IPEndPoint? ep, IPEndPoint? local = null)
     {
         lock (_lock)
         {
@@ -63,6 +74,7 @@ public sealed class PhaseTracker
             _connected = true;
             _connect = d;
             RemoteEndPoint = ep;
+            _localEndPoint = EndPointUtil.Normalize(local);
         }
     }
 
