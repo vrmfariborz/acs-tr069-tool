@@ -88,6 +88,55 @@ public class TransportTests
         var r = await t.PostAsync(Inform(), "\"\"", default);
         Assert.Null(r.StatusCode);
         Assert.Equal(UpstreamErrorKind.Connect, r.Error!.Kind);
+        // PT0.4: failed before connecting, so no upstream socket is claimed.
+        Assert.NotNull(r.Endpoints);
+        Assert.Null(r.Endpoints.UpstreamLocal);
+        Assert.Null(r.Endpoints.UpstreamRemote);
+        Assert.Null(r.Endpoints.UpstreamConnectionSerial);
+    }
+
+    [Fact]
+    public async Task Endpoints_UpstreamFilled_DownstreamNull_PooledReuseKeepsSerial()
+    {
+        await using var acs = await FakeAcs.StartAsync();
+        await using var t = Transport(acs.Url());
+
+        var r1 = await t.PostAsync(Inform(), "\"\"", default);
+        var r2 = await t.PostAsync(default, null, default);
+
+        foreach (var (r, i) in new[] { (r1, 0), (r2, 1) })
+        {
+            var e = r.Endpoints;
+            Assert.NotNull(e);
+            Assert.Null(e.DownstreamConnectionId);
+            Assert.Null(e.DownstreamRemote);
+            Assert.Null(e.DownstreamLocal);
+            Assert.Equal(new IPEndPoint(IPAddress.Loopback, acs.Port), e.UpstreamRemote);
+            Assert.Equal(acs.Received[i].RemoteEndPoint, e.UpstreamLocal);
+            Assert.Equal(1, e.UpstreamConnectionSerial);
+        }
+    }
+
+    [Fact]
+    public async Task Endpoints_AfterAcsRedirect_UpstreamNotClaimed()
+    {
+        // Review m2: the final response came over the redirect target's pool; the tracker may show another socket.
+        await using var target = await FakeAcs.StartAsync();
+        await using var acs = await FakeAcs.StartAsync(o => o.Override = _ => new FakeAcsResponse
+        {
+            Status = 307,
+            Headers = [new("Location", target.Url())],
+        });
+        await using var t = Transport(acs.Url());
+
+        var r = await t.PostAsync(Inform(), "\"\"", default);
+
+        Assert.Equal(200, r.StatusCode);
+        Assert.Single(target.Received);
+        Assert.NotNull(r.Endpoints);
+        Assert.Null(r.Endpoints.UpstreamLocal);
+        Assert.Null(r.Endpoints.UpstreamRemote);
+        Assert.Null(r.Endpoints.UpstreamConnectionSerial);
     }
 }
 
@@ -129,6 +178,15 @@ public class EngineTests
         var snap = store.GetAll().Single();
         Assert.Equal(SessionOutcome.Completed, snap.Outcome);
         Assert.Equal(4, snap.Exchanges.Count);
+        // PT0.4: CwmpClientSession stores the transport's endpoints (upstream only) on every exchange.
+        Assert.All(snap.Exchanges, e =>
+        {
+            Assert.NotNull(e.Endpoints);
+            Assert.Null(e.Endpoints.DownstreamRemote);
+            Assert.Equal(acs.Port, e.Endpoints.UpstreamRemote!.Port);
+            Assert.NotNull(e.Endpoints.UpstreamLocal);
+        });
+        Assert.Equal(acs.Received.Select(r => r.RemoteEndPoint), snap.Exchanges.Select(e => e.Endpoints!.UpstreamLocal));
         Assert.Empty(cpe.PendingEvents);
         // the GPV response carried the value set by the SPV
         Assert.Contains("ntp.acs.test", System.Text.Encoding.UTF8.GetString(acs.Received[^1].Body), StringComparison.Ordinal);

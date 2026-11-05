@@ -23,6 +23,9 @@ public sealed record FakeAcsRequest(int Index, string Method, string PathAndQuer
     public bool HasHeader(string name) => Headers.Any(h => h.Key.Equals(name, StringComparison.OrdinalIgnoreCase));
 
     public CwmpMessageKind Kind => Parsed.Kind;
+
+    /// <summary>Client (proxy/simulator) ip:port as FakeAcs saw it, IPv4-mapped normalised (PT0.4).</summary>
+    public System.Net.IPEndPoint? RemoteEndPoint { get; init; }
 }
 
 public sealed class FakeAcsResponse
@@ -242,7 +245,12 @@ public sealed class FakeAcs : IAsyncDisposable
         {
             var session = FindSession(parsed, headers, connectionId);
             request = new FakeAcsRequest(Interlocked.Increment(ref _index), ctx.Request.Method, target, headers, body, connectionId, parsed,
-                session?.Number ?? 0, DateTimeOffset.UtcNow);
+                session?.Number ?? 0, DateTimeOffset.UtcNow)
+            {
+                RemoteEndPoint = ctx.Connection.RemoteIpAddress is { } rip
+                    ? new System.Net.IPEndPoint(rip.IsIPv4MappedToIPv6 ? rip.MapToIPv4() : rip, ctx.Connection.RemotePort)
+                    : null,
+            };
             _received.Enqueue(request);
             response = Options.Override?.Invoke(request) ?? Decide(session, request, ctx.Request.Method);
         }

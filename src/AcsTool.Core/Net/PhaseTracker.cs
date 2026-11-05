@@ -10,6 +10,9 @@ namespace AcsTool.Core.Net;
 /// </summary>
 public sealed class PhaseTracker
 {
+    // Set by MarkConnected, cleared by Reset: a socket connected during the current exchange (PT0.4, review m2).
+    private bool _connectedThisExchange;
+
     private readonly object _lock = new();
     private bool _dnsDone;
     private bool _connected;
@@ -40,6 +43,7 @@ public sealed class PhaseTracker
         lock (_lock)
         {
             _headers = false;
+            _connectedThisExchange = false;
             _dns = null;
             _connect = null;
             _toHeaders = null;
@@ -78,6 +82,7 @@ public sealed class PhaseTracker
             _connected = true;
             _connect = d;
             _remoteEndPoint = EndPointUtil.Normalize(ep);
+            _connectedThisExchange = true;
             _localEndPoint = EndPointUtil.Normalize(local);
         }
     }
@@ -99,6 +104,19 @@ public sealed class PhaseTracker
             _tlsDone = true;
             _headers = true;
             _toHeaders = d;
+        }
+    }
+
+    /// <summary>
+    /// Reads the upstream socket facts under one lock (PT0.4, review m3), so a background connect cannot produce a mixed tuple.
+    /// Producers of <see cref="Sessions.ExchangeEndpoints"/> must use only this.
+    /// </summary>
+    public UpstreamSnapshot SnapshotUpstream()
+    {
+        lock (_lock)
+        {
+            return new UpstreamSnapshot(_localEndPoint, _remoteEndPoint, _connectionSerial, _connected,
+                _connected && (_connectedThisExchange || _headers));
         }
     }
 
@@ -128,3 +146,15 @@ public sealed class PhaseTracker
         }
     }
 }
+
+/// <summary>Atomic view of a <see cref="PhaseTracker"/>'s upstream socket (PT0.4).</summary>
+/// <param name="Local">Local endpoint of the last connected socket; null after a new attempt started.</param>
+/// <param name="Remote">Remote endpoint of the last connected socket; null after a new attempt started.</param>
+/// <param name="Serial">Connection-attempt serial (see <see cref="PhaseTracker.ConnectionSerial"/>).</param>
+/// <param name="Connected">The last attempt connected.</param>
+/// <param name="CarriedCurrentExchange">
+/// True only when the current exchange (since the last <see cref="PhaseTracker.Reset"/>) is known to have used this socket: a
+/// socket connected during it, or it received response headers. False when it failed before connecting or while waiting for a
+/// pooled connection; also false when it timed out on a reused pooled socket before headers (conservative, review m2).
+/// </param>
+public readonly record struct UpstreamSnapshot(IPEndPoint? Local, IPEndPoint? Remote, long Serial, bool Connected, bool CarriedCurrentExchange);

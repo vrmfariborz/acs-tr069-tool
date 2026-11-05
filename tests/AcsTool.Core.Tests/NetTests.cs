@@ -261,6 +261,52 @@ public class PhaseTrackerEndpointTests
         Assert.Equal(IPEndPoint.Parse("127.0.0.1:50001"), t.LocalEndPoint);
     }
 
+    [Fact]
+    public void SnapshotUpstream_ConnectedThisExchange_Carried()
+    {
+        var t = new PhaseTracker();
+        t.Reset();
+        t.BeginConnect();
+        t.MarkConnected(TimeSpan.Zero, IPEndPoint.Parse("127.0.0.1:7557"), IPEndPoint.Parse("127.0.0.1:50000"));
+
+        var s = t.SnapshotUpstream();
+
+        Assert.Equal(new UpstreamSnapshot(IPEndPoint.Parse("127.0.0.1:50000"), IPEndPoint.Parse("127.0.0.1:7557"), 1, true, true), s);
+    }
+
+    [Fact]
+    public void SnapshotUpstream_PooledReuse_CarriedOnlyAfterHeaders()
+    {
+        var t = new PhaseTracker();
+        t.BeginConnect();
+        t.MarkConnected(TimeSpan.Zero, IPEndPoint.Parse("127.0.0.1:7557"), IPEndPoint.Parse("127.0.0.1:50000"));
+
+        t.Reset(); // next exchange on the pooled socket
+        Assert.False(t.SnapshotUpstream().CarriedCurrentExchange); // e.g. failed while waiting for the pooled connection
+
+        t.MarkHeaders(TimeSpan.FromMilliseconds(5));
+        var s = t.SnapshotUpstream();
+        Assert.True(s.CarriedCurrentExchange);
+        Assert.Equal(1, s.Serial);
+        Assert.Equal(IPEndPoint.Parse("127.0.0.1:50000"), s.Local);
+    }
+
+    [Fact]
+    public void SnapshotUpstream_FailedReconnect_NotCarried_NoEndpoints()
+    {
+        var t = new PhaseTracker();
+        t.BeginConnect();
+        t.MarkConnected(TimeSpan.Zero, IPEndPoint.Parse("127.0.0.1:7557"), IPEndPoint.Parse("127.0.0.1:50000"));
+        t.Reset();
+
+        t.BeginConnect(); // connect then fails
+
+        Assert.Equal(new UpstreamSnapshot(null, null, 2, false, false), t.SnapshotUpstream());
+        var e = AcsTool.Core.Sessions.ExchangeEndpoints.Create("c1", null, null, t.SnapshotUpstream());
+        Assert.Null(e.UpstreamLocal);
+        Assert.Null(e.UpstreamConnectionSerial);
+    }
+
     [Theory]
     [InlineData("[::ffff:192.0.2.7]:7547", "192.0.2.7:7547")]
     [InlineData("192.0.2.7:7547", "192.0.2.7:7547")]

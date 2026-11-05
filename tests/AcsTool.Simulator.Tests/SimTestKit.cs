@@ -89,6 +89,10 @@ public sealed class RecordingSink(InMemorySessionStore inner) : ISessionSink
 
     public void UpdateSession(Guid sessionId, Func<SessionSnapshot, SessionSnapshot> patch) => inner.UpdateSession(sessionId, patch);
 
+    // Forwarded but not recorded in Calls, so the existing call-order assertions stay as they were (PT0.4).
+    public void SetExchangeEndpoints(Guid sessionId, int seq, ExchangeEndpoints endpoints) =>
+        ((ISessionSink)inner).SetExchangeEndpoints(sessionId, seq, endpoints);
+
     public void EndSession(Guid sessionId, SessionOutcome outcome)
     {
         Calls.Add("End:" + outcome);

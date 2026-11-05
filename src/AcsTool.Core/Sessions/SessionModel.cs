@@ -76,6 +76,18 @@ public sealed record ExchangeEndpoints(
     IPEndPoint? UpstreamRemote,
     long? UpstreamConnectionSerial)
 {
+    /// <summary>
+    /// Builds endpoints from the downstream side and an upstream snapshot. Upstream fields are filled only when the snapshot says
+    /// the socket carried this exchange (review m2); otherwise they are null.
+    /// </summary>
+    public static ExchangeEndpoints Create(string? downstreamConnectionId, IPEndPoint? downstreamRemote, IPEndPoint? downstreamLocal,
+        UpstreamSnapshot? upstream)
+    {
+        var up = upstream is { CarriedCurrentExchange: true } u ? u : (UpstreamSnapshot?)null;
+        return new ExchangeEndpoints(downstreamConnectionId, downstreamRemote, downstreamLocal, up?.Local, up?.Remote, up?.Serial)
+            .Normalized();
+    }
+
     /// <summary>Returns a copy with every endpoint normalised (IPv4-mapped IPv6 → IPv4).</summary>
     public ExchangeEndpoints Normalized() => this with
     {

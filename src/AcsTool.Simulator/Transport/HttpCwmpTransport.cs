@@ -20,6 +20,9 @@ public sealed record TransportResponse(int? StatusCode, IReadOnlyList<KeyValuePa
 
     /// <summary>Capture limit for the response body (CaptureSettings.MaxCapturedBodyBytes of the transport); default 1 MiB.</summary>
     public int MaxCapturedBodyBytes { get; init; } = new CaptureSettings().MaxCapturedBodyBytes;
+
+    /// <summary>Transport endpoints of this exchange (PT0.4); upstream only, null when unknown.</summary>
+    public ExchangeEndpoints? Endpoints { get; init; }
 }
 
 public interface ICwmpTransportFactory
@@ -102,9 +105,18 @@ public sealed class HttpCwmpTransport : ICwmpTransport
 
         var r = await UpstreamSender.SendAsync(_invoker, req, _tracker, _timeout, 16 * 1024 * 1024, _time, ct, () => _lastTlsErrors)
             .ConfigureAwait(false);
+        // Review m2: after an auto-redirect the final response came over the redirect target's pool, while the tracker may show
+        // another socket, so the upstream socket is only claimed when the request was not redirected.
+        var upstream = _tracker.SnapshotUpstream();
+        var redirected = req.RequestUri is { } final && final != _url;
+        var endpoints = ExchangeEndpoints.Create(null, null, null, redirected ? null : upstream);
         var reqHeaders = CaptureRequestHeaders(req);
         var capture = HttpMessageCapture.From("POST", req.RequestUri?.ToString() ?? _url.ToString(), null, reqHeaders, body.Span, _capture.MaxCapturedBodyBytes);
-        return new TransportResponse(r.StatusCode, r.Headers, r.Body, r.Error, r.Timings, capture) { MaxCapturedBodyBytes = _capture.MaxCapturedBodyBytes };
+        return new TransportResponse(r.StatusCode, r.Headers, r.Body, r.Error, r.Timings, capture)
+        {
+            MaxCapturedBodyBytes = _capture.MaxCapturedBodyBytes,
+            Endpoints = endpoints,
+        };
     }
 
     private List<KeyValuePair<string, string>> CaptureRequestHeaders(HttpRequestMessage req)
