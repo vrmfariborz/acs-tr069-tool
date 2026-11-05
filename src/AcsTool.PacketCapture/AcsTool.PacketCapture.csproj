@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AcsTool.PacketCapture</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Managed only; the native wpcap (Npcap) / libpcap is loaded lazily by SharpPcap on first device enumeration (design §5.2). -->
+    <PackageReference Include="SharpPcap" />
+    <PackageReference Include="PacketDotNet" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AcsTool.Core\AcsTool.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AcsTool.PacketCapture.Tests" />
+  </ItemGroup>
+</Project>

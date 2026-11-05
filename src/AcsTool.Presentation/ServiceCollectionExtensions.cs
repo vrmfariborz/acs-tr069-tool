@@ -1,6 +1,7 @@
 using AcsTool.Core.Sessions;
 using AcsTool.Core.Settings;
 using AcsTool.Core.Util;
+using AcsTool.PacketCapture;
 using AcsTool.Presentation.Abstractions;
 using AcsTool.Presentation.Detail;
 using AcsTool.Presentation.Feed;
@@ -28,6 +29,7 @@ public static class PresentationServiceCollectionExtensions
     {
         services.AddAcsToolProxy();
         services.AddAcsToolSimulator();
+        services.AddAcsToolPacketCapture();
         services.TryAddSingleton<IBannerService, BannerService>();
         services.TryAddSingleton<SessionFeedPump>();
         services.TryAddSingleton(sp => new ProxyViewModel(sp.GetRequiredService<ProxyServerFactory>(), sp.GetRequiredService<SettingsHolder>(),

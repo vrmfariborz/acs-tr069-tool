@@ -9,6 +9,7 @@ See `docs/PLAN.md` for the design and `docs/IMPLEMENTATION_NOTES.md` for status,
 - `src/AcsTool.Core`: CWMP model, parser, builders, session store, settings (net10.0).
 - `src/AcsTool.Proxy`: Kestrel-based capturing proxy (net10.0).
 - `src/AcsTool.Simulator`: CPE profiles and Inform simulator (net10.0).
+- `src/AcsTool.PacketCapture`: packet trace backend on SharpPcap/PacketDotNet (net10.0; live capture needs Npcap on Windows, see `docs/PACKET_TRACE_DESIGN.md` and `THIRD-PARTY-NOTICES.md`).
 - `src/AcsTool.Presentation`: UI-free view models (net10.0).
 - `src/AcsTool.App`: WPF shell (net10.0-windows). It compiles on Linux with `EnableWindowsTargeting`.
 - `tests/*`: xUnit tests. `AcsTool.Testing` holds FakeAcs and the shared fakes.

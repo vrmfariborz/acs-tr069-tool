@@ -7,6 +7,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AcsTool.Core\AcsTool.Core.csproj" />
+    <ProjectReference Include="..\AcsTool.PacketCapture\AcsTool.PacketCapture.csproj" />
     <ProjectReference Include="..\AcsTool.Proxy\AcsTool.Proxy.csproj" />
     <ProjectReference Include="..\AcsTool.Simulator\AcsTool.Simulator.csproj" />
   </ItemGroup>
