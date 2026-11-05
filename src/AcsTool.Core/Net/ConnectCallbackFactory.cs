@@ -15,7 +15,7 @@ public static class ConnectCallbackFactory
         return async (context, ct) =>
         {
             var tracker = trackerAccessor();
-            tracker.BeginConnect();
+            tracker.BeginConnect(context.DnsEndPoint); // review M1: remember which authority this socket is for
             var host = context.DnsEndPoint.Host;
             var port = context.DnsEndPoint.Port;
             var sw = Stopwatch.StartNew();

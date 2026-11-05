@@ -230,6 +230,7 @@ public class TrackerTests
             ExchangeTimings timings, IReadOnlyList<string>? notes = null) => inner.CompleteExchange(sessionId, seq, response, summary, error, timings, notes);
         public void UpdateSession(Guid sessionId, Func<SessionSnapshot, SessionSnapshot> patch) => inner.UpdateSession(sessionId, patch);
         public void EndSession(Guid sessionId, SessionOutcome outcome) => throw new InvalidOperationException("sink exploded");
+        public void SetExchangeEndpoints(Guid sessionId, int seq, ExchangeEndpoints endpoints) => inner.SetExchangeEndpoints(sessionId, seq, endpoints);
     }
 
     [Fact]

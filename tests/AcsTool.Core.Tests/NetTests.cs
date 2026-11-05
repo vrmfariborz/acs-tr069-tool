@@ -261,6 +261,98 @@ public class PhaseTrackerEndpointTests
         Assert.Equal(IPEndPoint.Parse("127.0.0.1:50001"), t.LocalEndPoint);
     }
 
+    [Fact]
+    public void SnapshotUpstream_ConnectedThisExchange_Carried()
+    {
+        var t = new PhaseTracker();
+        t.Reset();
+        t.BeginConnect();
+        t.MarkConnected(TimeSpan.Zero, IPEndPoint.Parse("127.0.0.1:7557"), IPEndPoint.Parse("127.0.0.1:50000"));
+
+        var s = t.SnapshotUpstream();
+
+        Assert.Equal(new UpstreamSnapshot(IPEndPoint.Parse("127.0.0.1:50000"), IPEndPoint.Parse("127.0.0.1:7557"), 1, true, true), s);
+    }
+
+    [Fact]
+    public void SnapshotUpstream_PooledReuse_CarriedOnlyAfterHeaders()
+    {
+        var t = new PhaseTracker();
+        t.BeginConnect();
+        t.MarkConnected(TimeSpan.Zero, IPEndPoint.Parse("127.0.0.1:7557"), IPEndPoint.Parse("127.0.0.1:50000"));
+
+        t.Reset(); // next exchange on the pooled socket
+        Assert.False(t.SnapshotUpstream().CarriedCurrentExchange); // e.g. failed while waiting for the pooled connection
+
+        t.MarkHeaders(TimeSpan.FromMilliseconds(5));
+        var s = t.SnapshotUpstream();
+        Assert.True(s.CarriedCurrentExchange);
+        Assert.Equal(1, s.Serial);
+        Assert.Equal(IPEndPoint.Parse("127.0.0.1:50000"), s.Local);
+    }
+
+    [Fact]
+    public void SnapshotUpstream_FailedReconnect_NotCarried_NoEndpoints()
+    {
+        var t = new PhaseTracker();
+        t.BeginConnect();
+        t.MarkConnected(TimeSpan.Zero, IPEndPoint.Parse("127.0.0.1:7557"), IPEndPoint.Parse("127.0.0.1:50000"));
+        t.Reset();
+
+        t.BeginConnect(); // connect then fails
+
+        Assert.Equal(new UpstreamSnapshot(null, null, 2, false, false), t.SnapshotUpstream());
+        var e = AcsTool.Core.Sessions.ExchangeEndpoints.Create("c1", null, null, t.SnapshotUpstream());
+        Assert.Null(e.UpstreamLocal);
+        Assert.Null(e.UpstreamConnectionSerial);
+    }
+
+    [Fact]
+    public void SnapshotUpstream_ForUri_ClaimsOnlyWhenSocketWasOpenedToThatAuthority()
+    {
+        // Review M1: one tracker, two pools (original ACS + redirect target); only the last connected socket is known.
+        var t = new PhaseTracker();
+        t.BeginConnect(new DnsEndPoint("acs.example", 7547));
+        t.MarkConnected(TimeSpan.Zero, IPEndPoint.Parse("192.0.2.1:7547"), IPEndPoint.Parse("192.0.2.9:50000"));
+        t.Reset();
+        t.BeginConnect(new DnsEndPoint("redirect.example", 8080)); // redirect target connects during exchange 1
+        t.MarkConnected(TimeSpan.Zero, IPEndPoint.Parse("192.0.2.2:8080"), IPEndPoint.Parse("192.0.2.9:50001"));
+        t.MarkHeaders(TimeSpan.Zero);
+
+        var redirected = t.SnapshotUpstream(new Uri("http://REDIRECT.example:8080/acs"));
+        Assert.True(redirected.CarriedCurrentExchange);
+        Assert.Equal(IPEndPoint.Parse("192.0.2.9:50001"), redirected.Local);
+        Assert.Equal(new DnsEndPoint("redirect.example", 8080), redirected.Target);
+
+        t.Reset(); // exchange 2 reuses the original ACS pooled socket
+        t.MarkHeaders(TimeSpan.Zero);
+
+        Assert.True(t.SnapshotUpstream().CarriedCurrentExchange); // unfiltered view (proxy: one authority)
+        Assert.False(t.SnapshotUpstream(new Uri("http://acs.example:7547/acs")).CarriedCurrentExchange);
+        Assert.False(t.SnapshotUpstream(new Uri("http://redirect.example:8081/acs")).CarriedCurrentExchange);
+        Assert.False(t.SnapshotUpstream((Uri?)null).CarriedCurrentExchange);
+    }
+
+    [Theory]
+    [InlineData("127.0.0.1", 7547, "http://127.0.0.1:7547/acs", true)]
+    [InlineData("::1", 7547, "http://[::1]:7547/acs", true)]
+    [InlineData("[::1]", 7547, "http://[::1]:7547/acs", true)]
+    [InlineData("acs.example", 443, "https://acs.example/acs", true)]
+    [InlineData("acs.example", 80, "https://acs.example/acs", false)]
+    [InlineData("other.example", 443, "https://acs.example/acs", false)]
+    public void UpstreamSnapshot_TargetMatches(string host, int port, string uri, bool expected)
+    {
+        var s = new UpstreamSnapshot(null, null, 1, true, true) { Target = new DnsEndPoint(host, port) };
+
+        Assert.Equal(expected, s.TargetMatches(new Uri(uri)));
+    }
+
+    [Fact]
+    public void UpstreamSnapshot_NoTarget_NeverMatches()
+    {
+        Assert.False(new UpstreamSnapshot(null, null, 1, true, true).TargetMatches(new Uri("http://127.0.0.1:7547/")));
+    }
+
     [Theory]
     [InlineData("[::ffff:192.0.2.7]:7547", "192.0.2.7:7547")]
     [InlineData("192.0.2.7:7547", "192.0.2.7:7547")]

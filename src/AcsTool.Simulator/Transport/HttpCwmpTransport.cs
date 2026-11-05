@@ -20,6 +20,9 @@ public sealed record TransportResponse(int? StatusCode, IReadOnlyList<KeyValuePa
 
     /// <summary>Capture limit for the response body (CaptureSettings.MaxCapturedBodyBytes of the transport); default 1 MiB.</summary>
     public int MaxCapturedBodyBytes { get; init; } = new CaptureSettings().MaxCapturedBodyBytes;
+
+    /// <summary>Transport endpoints of this exchange (PT0.4); upstream only, null when unknown.</summary>
+    public ExchangeEndpoints? Endpoints { get; init; }
 }
 
 public interface ICwmpTransportFactory
@@ -102,9 +105,20 @@ public sealed class HttpCwmpTransport : ICwmpTransport
 
         var r = await UpstreamSender.SendAsync(_invoker, req, _tracker, _timeout, 16 * 1024 * 1024, _time, ct, () => _lastTlsErrors)
             .ConfigureAwait(false);
+        // Review M1: the handler holds one pool per authority (original ACS and any redirect target) but one tracker, which only
+        // knows the last socket that connected. Claim it only when it was opened to the authority of the final request URI;
+        // otherwise (e.g. a pooled reuse of the original ACS socket after a redirect connected the target) report no upstream.
+        // Review m1: a request that failed at DNS/connect never used a socket, even if a background connect lands afterwards.
+        var upstream = r.Error is { Phase: RequestPhase.Dns or RequestPhase.Connect } ? (UpstreamSnapshot?)null
+            : _tracker.SnapshotUpstream(req.RequestUri ?? _url);
+        var endpoints = ExchangeEndpoints.Create(null, null, null, upstream);
         var reqHeaders = CaptureRequestHeaders(req);
         var capture = HttpMessageCapture.From("POST", req.RequestUri?.ToString() ?? _url.ToString(), null, reqHeaders, body.Span, _capture.MaxCapturedBodyBytes);
-        return new TransportResponse(r.StatusCode, r.Headers, r.Body, r.Error, r.Timings, capture) { MaxCapturedBodyBytes = _capture.MaxCapturedBodyBytes };
+        return new TransportResponse(r.StatusCode, r.Headers, r.Body, r.Error, r.Timings, capture)
+        {
+            MaxCapturedBodyBytes = _capture.MaxCapturedBodyBytes,
+            Endpoints = endpoints,
+        };
     }
 
     private List<KeyValuePair<string, string>> CaptureRequestHeaders(HttpRequestMessage req)

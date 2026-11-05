@@ -1,3 +1,4 @@
+using System.Net;
 using AcsTool.Core.Net;
 using AcsTool.Core.Sessions;
 
@@ -7,6 +8,26 @@ public sealed record IncomingRequest(string Method, string PathAndQuery, IReadOn
     ReadOnlyMemory<byte> Body, string RemoteIp, int RemotePort, string ConnectionId, bool IsHttps)
 {
     public string? Header(string name) => HeaderUtil.Get(Headers, name);
+
+    /// <summary>Proxy address the CPE connected to (ctx.Connection.LocalIpAddress, IPv4-mapped normalised); null when unknown (PT0.4).</summary>
+    public string? LocalIp { get; init; }
+
+    /// <summary>Proxy port the CPE connected to (ctx.Connection.LocalPort); 0 when unknown (PT0.4).</summary>
+    public int LocalPort { get; init; }
+
+    /// <summary>Parsed CPE address when the producer has it (review n2: avoids re-parsing <see cref="RemoteIp"/>).</summary>
+    internal IPAddress? RemoteAddress { get; init; }
+
+    /// <summary>Parsed proxy address when the producer has it (review n2: avoids re-parsing <see cref="LocalIp"/>).</summary>
+    internal IPAddress? LocalAddress { get; init; }
+
+    /// <summary>CPE endpoint as an <see cref="IPEndPoint"/>; null when the address is unknown.</summary>
+    public IPEndPoint? RemoteEndPoint => (RemoteAddress ?? (IPAddress.TryParse(RemoteIp, out var a) ? a : null)) is { } ip
+        ? new IPEndPoint(ip, RemotePort) : null;
+
+    /// <summary>Proxy endpoint the CPE connected to; null when unknown.</summary>
+    public IPEndPoint? LocalEndPoint => (LocalAddress ?? (IPAddress.TryParse(LocalIp, out var a) ? a : null)) is { } ip
+        ? new IPEndPoint(ip, LocalPort) : null;
 
     public string ClientEndpoint => RemoteIp.Contains(':', StringComparison.Ordinal) ? $"[{RemoteIp}]:{RemotePort}" : $"{RemoteIp}:{RemotePort}";
 }

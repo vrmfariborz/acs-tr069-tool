@@ -211,6 +211,10 @@ public sealed class CwmpClientSession
             respCap = HttpMessageCapture.From(null, _ctx.Profile.AcsUrl, status, r.Headers, r.Body.Span, r.MaxCapturedBodyBytes);
         }
         _ctx.Sink.CompleteExchange(_sid, seq, respCap, respSummary, r.Error, r.Timings);
+        if (r.Endpoints is { } endpoints)
+        {
+            _ctx.Sink.SetExchangeEndpoints(_sid, seq, endpoints);
+        }
         ct.ThrowIfCancellationRequested();
         if (r.IsTransportFailure)
         {

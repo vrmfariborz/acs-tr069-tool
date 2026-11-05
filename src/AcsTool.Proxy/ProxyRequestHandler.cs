@@ -86,6 +86,12 @@ public sealed class ProxyRequestHandler
                 var outcome = CpeSessionTracker.EvaluateEnd(session, parsed.Kind, result, respParsed?.Kind, notes);
                 var timings = result.Timings with { Total = _time.GetElapsedTime(ts) };
                 _sink.CompleteExchange(session.SessionId, seq, respCap, respSummary, result.Error, timings, notes);
+                // PT0.4: downstream from the CPE connection; upstream only if this exchange's socket is known (review m2/m3).
+                // PT0.4 review m1: a failure at DNS/connect used no socket, even if a background connect lands before the snapshot.
+                var upstream = result.Error is { Phase: RequestPhase.Dns or RequestPhase.Connect } ? (UpstreamSnapshot?)null
+                    : session.Tracker.SnapshotUpstream();
+                _sink.SetExchangeEndpoints(session.SessionId, seq, ExchangeEndpoints.Create(req.ConnectionId, req.RemoteEndPoint,
+                    req.LocalEndPoint, upstream));
                 if (parsed.Kind == CwmpMessageKind.Inform && summary.DeviceId is { } dev && session.DeviceKey is null)
                 {
                     session.DeviceKey = dev.Key;
@@ -173,6 +179,8 @@ public sealed class ProxyRequestHandler
         _sink.CompleteExchange(orphan.SessionId, seq, null, null,
             new UpstreamError(UpstreamErrorKind.BodyTooLarge, RequestPhase.Dns, $"Request body exceeds {_settings.MaxRequestBodyBytes} bytes; not forwarded"),
             new ExchangeTimings(started, Total: _time.GetUtcNow() - started));
+        // Not forwarded, so downstream only (PT0.4).
+        _sink.SetExchangeEndpoints(orphan.SessionId, seq, ExchangeEndpoints.Create(req.ConnectionId, req.RemoteEndPoint, req.LocalEndPoint, null));
         await _tracker.EndAsync(orphan, SessionOutcome.ProtocolError).ConfigureAwait(false);
         ctx.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
         ctx.Response.ContentLength = 0;
@@ -196,13 +204,16 @@ public sealed class ProxyRequestHandler
         {
             target = (ctx.Request.PathBase + ctx.Request.Path + ctx.Request.QueryString).ToString();
         }
-        var remote = ctx.Connection.RemoteIpAddress;
-        if (remote is { IsIPv4MappedToIPv6: true })
-        {
-            remote = remote.MapToIPv4();
-        }
+        var remote = EndPointUtil.Normalize(ctx.Connection.RemoteIpAddress);
+        var local = EndPointUtil.Normalize(ctx.Connection.LocalIpAddress);
         return new IncomingRequest(ctx.Request.Method, target, headers, body, remote?.ToString() ?? "unknown",
-            ctx.Connection.RemotePort, ctx.Connection.Id, ctx.Request.IsHttps);
+            ctx.Connection.RemotePort, ctx.Connection.Id, ctx.Request.IsHttps)
+        {
+            LocalIp = local?.ToString(),
+            LocalPort = ctx.Connection.LocalPort,
+            RemoteAddress = remote,
+            LocalAddress = local,
+        };
     }
 
     private static async Task<(byte[] Body, bool TooLarge)> ReadBodyAsync(Stream body, int max, CancellationToken ct)
