@@ -4,6 +4,9 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- Packet capture (PT0.2, design §4, D2): stable releases only. PacketDotNet is referenced explicitly to pin it. -->
+    <PackageVersion Include="SharpPcap" Version="6.3.1" />
+    <PackageVersion Include="PacketDotNet" Version="1.4.8" />
     <!-- App -->
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
     <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />

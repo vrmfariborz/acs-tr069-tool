@@ -18,4 +18,8 @@
   <ItemGroup>
     <ProjectReference Include="..\AcsTool.Presentation\AcsTool.Presentation.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Third-party licence notices ship next to AcsTool.exe (PT0.2 review, Known item). -->
+    <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
