@@ -7,8 +7,8 @@
 | Date | 2026-11-05 |
 | Baseline | `main` @ `479639b` |
 | Target framework | net10.0 (App net10.0-windows) |
-| Precondition | Fariborz approves decisions D1–D16 (design §14). Recommended: PT0.1–PT0.2 any time (parallel to M5); PT0.3–PT0.4 and PT1 after M5 (TLS) is merged (D1). |
-| Revision | **r2 (2026-11-05):** Proxy-tab integration promoted into the MVP (Fariborz: "Inform arrives → see the session and its packets in Proxy"). PT1 re-ordered around that story; the standalone Packet Trace tab is now secondary and off the critical path. |
+| Status | **Approved 2026-11-05** — Fariborz: "Its approved skip the M5 and build proxy-tab packet plan." All decisions D1–D16 locked (design §14). **D1 overridden: PT starts now on current `main`; M5 (TLS) is deferred** and will rebase onto PT later. |
+| Revision | **r3 (2026-11-05):** decisions locked; "after M5" dependencies removed; M5 follow-ups listed in §"M5 rebase notes".<br>**r2 (2026-11-05):** Proxy-tab integration promoted into the MVP (Fariborz: "Inform arrives → see the session and its packets in Proxy"). PT1 re-ordered around that story; the standalone Packet Trace tab is now secondary and off the critical path. |
 
 Sizes: **S** ≤ ½ day · **M** 1–2 days · **L** 3–5 days (one developer). Task IDs use the prefix `PT` so they cannot collide with
 PLAN `Tn.x` or `M5-` IDs. "Files" lists the main files; **(new)** marks new files. Event ids for logging: **7000–7099**.
@@ -23,7 +23,7 @@ CI must stay green on Linux and Windows with **no** libpcap/Npcap installed.
 | Milestone | Goal | Exit criteria | Estimate |
 |---|---|---|---|
 | **PT0** Spike & groundwork | Prove packages + native loading on Windows; project skeleton; Core endpoint plumbing | Skeleton builds on both CIs with `CI=true`; Windows spike notes recorded; `ExchangeEndpoints` populated by proxy and simulator | 2–3 d |
-| **PT1** MVP (r2) | **Proxy tab shows each session's/exchange's packets** (Capture packets toggle + session-detail Packets tab, both legs, list/tree/hex, live) + exchange-scope correlation + PCAPNG export with masking + Wireshark launch; Packet Trace tab as capture console + offline open (PT1.13, may slip to PT1b) | Acceptance PT1-A1…A10 below; Windows checklist W-PT-01…16 (incl. 04b–04d) passed | **16–21 d** (r1: 13–17 d). Proxy-story critical path ≈ 14–18 d; PT1.13 + file reader ≈ 2–3 d can become PT1b |
+| **PT1** MVP (r2/r3) | **Proxy tab shows each session's/exchange's packets** (Capture packets toggle + session-detail Packets tab, both legs, list/tree/hex, live) + exchange-scope correlation + PCAPNG export with masking + Wireshark launch; Packet Trace tab as capture console + offline open (PT1.13, may slip to PT1b) | Acceptance PT1-A1…A10 below; Windows checklist W-PT-01…16 (incl. 04b–04d) passed | **16–21 d** (r1: 13–17 d). Proxy-story critical path ≈ 14–18 d; PT1.13 + file reader ≈ 2–3 d can become PT1b |
 | **PT2** Streams & HTTP/CWMP | TCP reassembly, HTTP/1.1 extraction, CWMP summary from wire, Follow TCP Stream, exact exchange-level match (upgrades the Packets tab basis), wire-vs-app diff, ladder/flow view in the Packets tab | PT2-A1…A8 | 10–13 d |
 | **PT3** Offline & polish | Display filter, wire sessions for files, feed context-menu shortcuts, TLS handshake details, capture spooling | PT3-A1…A6 | 7–9 d |
 | **PT4** Later / maybe | Linux key log, ETW/pktmon backend (no Npcap), stats graphs | Only on request | — |
@@ -34,14 +34,23 @@ CI must stay green on Linux and Windows with **no** libpcap/Npcap installed.
 
 ## PT0 — Spike & groundwork
 
-### PT0.1 Windows native spike (throw-away, not merged) — S
-- **Description:** Console app on a Windows PC with Npcap: list devices (friendly names, addresses, loopback flag), capture 30 s on
-  the LAN NIC and `NPF_Loopback` with `tcp port 7547 or tcp port 7557`, print link types, timestamp resolution support, kernel stats.
-  Repeat with Npcap installed "admin only" (record the UAC behaviour) and with Npcap uninstalled (record the exception type/message).
-- **Files:** none in repo; results appended to `docs/IMPLEMENTATION_NOTES.md` § "Packet trace spike" by CoderBot (or TesterBot).
-- **Deps:** —
-- **Acceptance:** Notes state: SharpPcap 6.3.1 finds `wpcap.dll` under `System32\Npcap` without extra setup; loopback link type
-  (expected DLT_NULL); exception for missing Npcap (expected `DllNotFoundException`); admin-only behaviour.
+### PT0.1 Windows Npcap spike (throw-away tool; only its findings are merged) — S
+- **Description:** A standalone console tool `spikes/PcapSpike` (net10.0, **not** in `AcsTool.sln`) on branch `spike/pt0-npcap`
+  that answers the native-layer questions the design depends on, and writes a Markdown report. Built on Linux; run on a Windows
+  PC with Npcap (by Fariborz or TesterBot). Checks: `Pcap.Version`/`SharpPcapVersion`/`LibpcapVersion`; device list (name,
+  friendly name, description, addresses, MAC, loopback flag, link type after open, supported timestamp types); behaviour with
+  Npcap missing (exception type/message) and with "admin only" Npcap (UAC); D10 auto-selection preview; 30 s capture on the
+  chosen LAN NIC + `NPF_Loopback` with self-generated traffic (local listeners on 7547/7557 and a connection to the PC's own LAN
+  IP → verify it appears on Loopback, design §11.2); per-device `ICaptureStatistics`; `KernelBufferSize` and
+  `TimestampResolution.Nanosecond` accepted or not; capture-callback thread identity (not thread pool); write a sample `.pcap`
+  via `CaptureFileWriterDevice` for fixtures. Full handoff: see the PT0.1 brief delivered with r3 (DevOrchestrator).
+- **Files:** `spikes/PcapSpike/*` on `spike/pt0-npcap` (never merged); findings → `docs/IMPLEMENTATION_NOTES.md` § "Packet trace
+  spike (PT0.1)" and sample captures → `tests/fixtures/pcap/` (merged with PT0.2).
+- **Deps:** none (current `main`; no M5 dependency).
+- **Acceptance:** Report answers each check with observed values; confirms or refutes: `wpcap.dll` found under `System32\Npcap`
+  with no extra setup; loopback link type (expected DLT_NULL); missing Npcap → `DllNotFoundException`; self-connection to the LAN
+  IP appears on Loopback; D10 auto-selection picks LAN + Loopback for defaults. Any refuted assumption is listed with the design
+  section it affects.
 
 ### PT0.2 Project skeleton + packages — S
 - **Description:** Add `src/AcsTool.PacketCapture` (net10.0, refs Core, `PackageReference SharpPcap` + `PacketDotNet`),
@@ -63,7 +72,7 @@ CI must stay green on Linux and Windows with **no** libpcap/Npcap installed.
   Normalise IPv4-mapped IPv6 like `ProxyRequestHandler.Snapshot`.
 - **Files:** `src/AcsTool.Core/Sessions/SessionModel.cs`, `src/AcsTool.Core/Sessions/InMemorySessionStore.cs`,
   `src/AcsTool.Core/Net/PhaseTracker.cs`, `src/AcsTool.Core/Net/ConnectCallbackFactory.cs`, tests in `tests/AcsTool.Core.Tests/SessionStoreTests.cs`, `NetTests.cs`.
-- **Deps:** D13 approved. If M5 is in flight, rebase onto it (same files).
+- **Deps:** D13 (approved). Starts on current `main` — **no M5 dependency** (M5 deferred, D1 r3). M5 will later rebase onto these `PhaseTracker`/`ConnectCallbackFactory` changes.
 - **Acceptance:** Store test: `SetExchangeEndpoints` on an existing exchange sets it and raises one `Updated`; unknown session/seq
   is a no-op; `CapturedBytes` unchanged. Net test: a real connect to a local `TcpListener` records `LocalEndPoint` with a non-zero
   port and `ConnectionSerial` 1, a second connection → 2; pooled reuse keeps the serial. Existing tests unchanged and green
@@ -178,7 +187,8 @@ If time is short, **PT1.13 and the PCAP/PCAPNG reader half of PT1.2 may move to 
 
 ### PT1.7 BPF capture-filter builder — S
 - **Description:** `CaptureFilterBuilder.Build(...)` per design §8.1; `ForSession(SessionSnapshot)`; **(r2)** regenerated on
-  every proxy start unless `CaptureFilterOverride` is set.
+  every proxy start unless `CaptureFilterOverride` is set. **(r3)** Takes a list of listen ports (today: `ProxySettings.Port` only);
+  M5's HTTPS port is added there when M5 lands (see "M5 rebase notes").
 - **Files:** `src/AcsTool.PacketCapture/Filters/CaptureFilterBuilder.cs` (new), tests.
 - **Deps:** PT0.3, D9.
 - **Acceptance:** Table tests as r1 (default string exact; multi-IP host; IPv6; default ports; DNS/ICMP off; session filter); a
@@ -325,7 +335,7 @@ for the three injected-fault scenarios · A7 reassembly budget respected under a
 | PT3.1 | Display filter | Managed subset (design §8.2) with parser, error position, history; replaces/extends quick toggles in the Packet Trace tab. | `PacketCapture/Filters/DisplayFilter*.cs`, VM | PT1.13 | M | Grammar tests; filter of 200k frames applied off-UI in < 1 s. |
 | PT3.2 | Wire sessions for files | Group rebuilt CWMP messages into display-only sessions (CPE IP + cookie + Inform boundaries); list in a side panel; export per wire session (D12). | `PacketCapture/Correlation/WireSessionBuilder.cs` (new), VM, view | PT2.3 | M | Fixture capture with two CPEs and three sessions → three wire sessions with right exchanges; nothing written to `InMemorySessionStore`. |
 | PT3.3 | Feed context-menu shortcuts | (r2: the main cross-link — the Packets tab — is now MVP.) Session feed right-click: *Show packets* (selects the session + Packets tab), *Export packets (.pcapng)*, *Show in Packet Trace*. | `SessionFeedView.xaml`, `SessionFeedViewModel` | PT1.11, PT1.13 | S | VM tests for the three commands; XAML tests still green. |
-| PT3.4 | TLS handshake details + M5 link | TLS ClientHello/ServerHello/Alert/Certificate (subject/issuer/thumbprint SHA-256 when unencrypted ≤ TLS 1.2) in the tree; match alerts to `SessionSnapshot.Tls`/`UpstreamError(Kind=Tls)`. | `PacketCapture/Decode/TlsDissector.cs` (new) | PT1.3, M5 merged | M | Fixtures (TLS 1.2 and 1.3 handshakes, alert 40/42/48) dissected correctly; thumbprint equals `TlsInfo` thumbprint in an HTTPS integration test (Linux, synthetic capture from test certs). |
+| PT3.4 | TLS handshake details (+ M5 link when M5 lands) | TLS ClientHello/ServerHello/Alert/Certificate (subject/issuer/thumbprint SHA-256 when unencrypted ≤ TLS 1.2) in the tree; match alerts to `SessionSnapshot.Tls`/`UpstreamError(Kind=Tls)`. | `PacketCapture/Decode/TlsDissector.cs` (new) | PT1.3 (upstream HTTPS parts work on today's `main`; inbound-listener parts need M5, deferred) | M | Fixtures (TLS 1.2 and 1.3 handshakes, alert 40/42/48) dissected correctly; thumbprint equals `TlsInfo` thumbprint in an HTTPS integration test (Linux, synthetic capture from test certs). |
 | PT3.5 | Capture spooling | Optional ring of PCAPNG files on disk (`%LOCALAPPDATA%\AcsTool\pcap-spool`, N × M MiB) so long captures survive in-memory eviction; "export" can read from spool. | `PacketCapture/Pipeline/SpoolWriter.cs` (new), settings | PT1.6, PT1.2 | M | 1 h synthetic capture keeps memory within budget and spool within N×M; export of an evicted range reads from spool. |
 | PT3.6 | Pooled frame buffers (perf) | Replace exact-size arrays with slab/pool if PT1 perf numbers show GC pressure. | `PacketStore`, ingest | PT1 perf data | S–M | Gen0 GCs/s reduced ≥ 50 % at 5,000 pps with no correctness regressions. |
 
@@ -405,16 +415,27 @@ app drops < 0.1 %, dispatches ≤ 10/s, allocation per frame ≈ frame size; pro
 | W-PT-11 | Open a Wireshark-saved `.pcapng` (multi-interface) and a `.pcap` offline; correct decoding and times. |
 | W-PT-12 | Busy NIC with **empty** filter for 5 min: warning shown; drop counters move but UI stays responsive; memory ≤ budget + ~40 MiB; proxy sessions still complete. |
 | W-PT-13 | Simulator → proxy on the same PC: loopback conversation linked to both the simulator and the proxy session. |
-| W-PT-14 | HTTPS upstream (or M5 HTTPS listener): TLS records shown, no HTTP; certificate error case shows the alert frame and links to the session with `UpstreamError Tls`. |
+| W-PT-14 | HTTPS upstream (M5 HTTPS listener only after M5 lands — deferred): TLS records shown, no HTTP; certificate error case shows the alert frame and links to the session with `UpstreamError Tls`. |
 | W-PT-15 | (PT2) Follow TCP Stream on a CWMP session: interleaved Inform/InformResponse/empty/204; HTTP-messages mode; save raw. |
 | W-PT-17 | (PT2) Flow view of an Inform exchange reads like a sequence diagram (CPE │ Proxy │ ACS). |
 | W-PT-16 | App close while capturing: closes within the normal shutdown time; no orphaned Npcap handles (re-open capture in Wireshark works). |
 
 ---
 
-## Decisions to confirm before coding (copy of design §14, r2)
+## M5 rebase notes (r3: M5 deferred, PT first)
 
-Changed in r2: **D1** (PT1 order: Proxy story first; console tab last/PT1b; still after M5), **D8** (linked-first retention),
+When M5 (TLS, `docs/M5_TASKS.md`) resumes it rebases onto PT. Expected touch points:
+- `PhaseTracker` / `ConnectCallbackFactory` (PT0.3 adds `LocalEndPoint`, `ConnectionSerial`; M5 resets TLS error state per connection).
+- `ProxyView.xaml` / `ProxyViewModel` (PT1.10 adds the capture toggle/chip; M5 adds HTTPS listener and TLS settings).
+- `SessionDetailView.xaml` (PT1.11 adds the Packets tab; M5 adds the TLS chip/pop-up in the header — different regions).
+- `CaptureFilterBuilder` listen ports: add the HTTPS listener port (planned 7443) → one-line change + a table test.
+- `docs/user-guide/roadmap.md`: M5 is no longer "planned next" — update when PT1 merges.
+
+## Decisions (copy of design §14, r3 — locked)
+
+**All approved and locked 2026-11-05** ("Its approved skip the M5 and build proxy-tab packet plan.").
+**D1 overridden:** packet trace now, M5 deferred (no PT task waits for M5).
+Changed in r2 and approved as recommended: **D8** (linked-first retention),
 **D9** (filter auto-regenerated on proxy start), **D11** (Packets tab + Proxy toggle in the MVP instead of PT3 links).
 New: **D15** (capture starts with the proxy via a persisted toggle, default on when Npcap is present), **D16** (MVP exchange
 matching by request order + time fallback, exact in PT2).

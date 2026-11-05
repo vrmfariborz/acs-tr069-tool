@@ -7,8 +7,8 @@
 | Date | 2026-11-05 |
 | Baseline | `main` @ `479639b` ("docs(user-guide): FLAKY-01 repro is no longer skipped after the feed-pump fix") |
 | Target framework | net10.0 (`AcsToolTfm` in `Directory.Build.props`); App `net10.0-windows` |
-| Status | **Design only. No code under `src/` is changed by this branch.** Decisions D1–D16 (§14) need Fariborz's approval before coding. |
-| Revision | **r2 (2026-11-05):** Fariborz's UX clarification — packet tracing is primarily a feature **of the Proxy tab**: when an Inform/session/exchange appears, its packets are shown right there. Proxy-tab integration moved into the MVP; the standalone Packet Trace tab is kept as a secondary "capture console". Changed sections: §1, §2, §5.1, §5.3, §6.4 (new), §7, §8.1, §13, §14. |
+| Status | **Approved 2026-11-05 by Fariborz** (via DevOrchestrator): "Its approved skip the M5 and build proxy-tab packet plan." All decisions D1–D16 (§14) are **locked**; D1 is overridden (packet trace before M5). Design only — no code under `src/` is changed by this branch. |
+| Revision | **r3 (2026-11-05):** decisions locked; D1 overridden — PT starts now on current `main`, **M5 (TLS) deferred** and will rebase onto PT later (§14).<br>**r2 (2026-11-05):** Fariborz's UX clarification — packet tracing is primarily a feature **of the Proxy tab**: when an Inform/session/exchange appears, its packets are shown right there. Proxy-tab integration moved into the MVP; the standalone Packet Trace tab is kept as a secondary "capture console". Changed sections: §1, §2, §5.1, §5.3, §6.4 (new), §7, §8.1, §13, §14. |
 
 Every type and path called "existing" below was checked against `main` @ `479639b`. New types are marked **(new)**.
 
@@ -459,7 +459,7 @@ public sealed record PacketCaptureSettings(
 tcp port 7547 or (host 127.0.0.1 and tcp port 7557) or (host ::1 and tcp port 7557) or icmp or icmp6 or udp port 53
 ```
 
-- Listen port from `ProxySettings.Port`; plus the M5 HTTPS listener port (7443) when that setting exists and is enabled.
+- Listen port from `ProxySettings.Port`. **M5 is deferred (D1, r3):** the HTTPS listener port (planned 7443) does not exist yet, so PT1 builds the filter from the HTTP listen port only and exposes a `listenPorts` list; when M5 lands it adds its port there (small rebase item, tracked as PT1.7 follow-up).
 - Upstream: scheme default port when the URL has none (80/443); host → addresses resolved **at capture start** (if it is a name;
   re-resolve on restart). IPv6 literals bracketed. All simulator profile `AcsUrl` hosts/ports are added when "include simulator
   targets" is ticked (default on if any CPE is running).
@@ -542,7 +542,7 @@ runs against whatever sessions are currently in the store (§6.3 item 6).
 
 ## 11. Risks and limitations
 
-### 11.1 TLS on the wire (HTTPS upstream, M5 HTTPS listener)
+### 11.1 TLS on the wire (HTTPS upstream today; M5 HTTPS listener later — M5 deferred)
 
 - Proxy→ACS over HTTPS (production) and CPE→proxy over HTTPS (M5 port 7443) are encrypted on the wire. Packet Trace shows TCP and
   TLS **record-layer** facts only: handshake messages (ClientHello SNI/versions/ALPN, ServerHello version, alerts with
@@ -747,28 +747,33 @@ A third main tab for what does not fit the session-centric view: device selectio
 - Keyboard: `F5` stays the proxy Start/Stop; `Ctrl+E` toggles packet capture (Proxy and Packet Trace tabs); in the session detail
   `Ctrl+4` selects the Packets tab.
 
-## 14. Open decisions for Fariborz (each with a recommended default) — revised r2
+## 14. Decisions — **all approved and locked 2026-11-05** (r3)
 
-Legend: **CHANGED** = recommendation changed in r2 because of the Proxy-tab UX; **NEW** = added in r2; **stayed** = unchanged.
+Approval (Fariborz, relayed by DevOrchestrator, 2026-11-05): "Its approved skip the M5 and build proxy-tab packet plan."
+Meaning: the Proxy-tab packet plan (r2, commit `158416c`) is approved as recommended; **D1 is overridden** — packet trace starts
+now and M5 (TLS) is deferred; every other decision is approved with its recommended default.
 
-| ID | r2 | Decision | Recommended default |
-|---|---|---|---|
-| **D1** | **CHANGED** (order inside PT; slot unchanged) | Milestone naming, slot and task order. | Own prefix **PT0–PT4**. PT1 still starts **after M5 (TLS) merges** — even more so now, because the MVP edits `SessionDetailView`/`ProxyView`/`ProxyViewModel`, which M5 also changes (TLS chip/pop-up in the detail header, TLS settings). PT0.1–PT0.2 can run in parallel with M5; PT0.3–PT0.4 (Core endpoints) start once M5's `PhaseTracker`/`ConnectCallbackFactory` changes are merged. **New PT1 critical path:** pipeline → correlation incl. exchange-scope lookup → Proxy toolbar toggle → Packets tab in the session detail → export; the standalone Packet Trace tab comes last in PT1 and may slip to a "PT1b" without blocking the Proxy story. (Alternative if Fariborz wants packets before TLS: run PT before M5 and let M5 rebase — similar total cost.) |
-| **D2** | stayed | Platform gating. | No conditional compilation; stable SharpPcap 6.3.1 + PacketDotNet 1.4.8; runtime probe. |
-| **D3** | stayed | Npcap distribution. | Not bundled; detect, explain, link to npcap.com (now surfaced from the Proxy chip as well). |
-| **D4** | stayed | Elevation. | Keep `asInvoker`; admin-only Npcap via its own UAC helper. |
-| **D5** | stayed | PCAP/PCAPNG file I/O. | Managed reader/writer; SharpPcap only for live capture. |
-| **D6** | stayed | Export format. | PCAPNG default with per-packet comments; PCAP option. Adds per-exchange export from the Packets tab. |
-| **D7** | stayed | Credentials in exports. | Same-length masking on by default; include-credentials checkbox not persisted. |
-| **D8** | **CHANGED** | Memory defaults and eviction. | Same sizes (snap 65,535 B; 200k frames; 128 MiB; 20k queue; 16 MiB kernel buffer; 32 MiB reassembly in PT2), but **linked-first retention** instead of plain oldest-first: unlinked frames go first, then frames of sessions already evicted from the store, then linked frames (≤ 75 % of the budget). Reason: the Proxy detail must still show packets for sessions visible in the feed. |
-| **D9** | **CHANGED** (detail) | Default capture filter. | Same generated filter (listen ports + upstream + simulator targets + ICMP/DNS), now **regenerated automatically on every proxy start** when capturing from the Proxy tab; a custom filter is pinned only from the Packet Trace tab and flagged on the Proxy chip. |
-| **D10** | stayed (more important) | Default devices. | Auto: the NIC owning the proxy bind address (all up physical NICs when `0.0.0.0`) **plus Loopback** when the upstream or a simulator target is local. This is now the normal path (no device picker in the Proxy tab), so PT0.1 must verify it on a real PC. |
-| **D11** | **CHANGED** | Packets in existing views. | **MVP:** a **Packets** tab in the session detail (shared by Proxy and Simulator; Summary/Headers/Raw unchanged), exchange or session scope, both legs, compact list/tree/hex, live refresh, export/Wireshark; plus the **Capture packets** toggle + status chip + "connections without a session" counter on the Proxy toolbar. *(Was: no changes to existing views in the MVP; links only in PT3.)* |
-| **D12** | stayed | Offline "wire sessions". | Display-only in the Packet Trace tab (PT3); never inserted into `InMemorySessionStore`. |
-| **D13** | stayed (now also required for the exchange view) | Core changes for correlation. | Additive `ExchangeEndpoints` + `ISessionSink.SetExchangeEndpoints` (default no-op) + `PhaseTracker.LocalEndPoint`/`ConnectionSerial`; correlator polls `GetAll()`. |
-| **D14** | stayed | TLS on the wire. | Record-layer only; no key logging on Windows. On HTTPS legs the Packets tab uses the "by time" basis and says so. |
-| **D15** | **NEW** | Does capture start with the proxy? | **Yes, via the persisted "Capture packets" toggle, default on** — effective only when Npcap is available (otherwise the chip explains and nothing else changes). The narrow default filter keeps the cost negligible. Alternative: default off with a one-time "Turn on packet capture?" prompt on first proxy start. |
-| **D16** | **NEW** | Exchange-level packets before PT2's reassembly. | Ship the MVP with **request-order segmentation + time-window fallback** (§6.4), with the match basis always displayed; PT2 upgrades to exact HTTP-message matching. |
+Legend for the r2 column: **CHANGED** = recommendation changed in r2 because of the Proxy-tab UX; **NEW** = added in r2; **stayed** = unchanged since r1.
+Status column: **APPROVED** = locked as recommended; **APPROVED (overridden)** = locked with Fariborz's change.
+
+| ID | Status (2026-11-05) | r2 | Decision | Approved default |
+|---|---|---|---|---|
+| **D1** | **APPROVED (overridden)** | CHANGED | Milestone naming, slot and task order. | Own prefix **PT0–PT4**. **Packet trace now; M5 (TLS) deferred.** PT0 and PT1 start on current `main` without waiting for M5; M5 rebases onto PT later (expected conflicts: `PhaseTracker`/`ConnectCallbackFactory` from PT0.3, `ProxyView`/`ProxyViewModel`/`SessionDetailView` from PT1.10–PT1.11; plus adding the 7443 listen port to the generated capture filter). PT1 critical path unchanged from r2: pipeline → correlation incl. exchange-scope lookup → Proxy toolbar toggle → Packets tab → export; the standalone Packet Trace tab last (may slip to PT1b). *(r2 recommendation was "after M5"; overridden by Fariborz.)* |
+| **D2** | **APPROVED** | stayed | Platform gating. | No conditional compilation; stable SharpPcap 6.3.1 + PacketDotNet 1.4.8; runtime probe. |
+| **D3** | **APPROVED** | stayed | Npcap distribution. | Not bundled; detect, explain, link to npcap.com (now surfaced from the Proxy chip as well). |
+| **D4** | **APPROVED** | stayed | Elevation. | Keep `asInvoker`; admin-only Npcap via its own UAC helper. |
+| **D5** | **APPROVED** | stayed | PCAP/PCAPNG file I/O. | Managed reader/writer; SharpPcap only for live capture. |
+| **D6** | **APPROVED** | stayed | Export format. | PCAPNG default with per-packet comments; PCAP option. Adds per-exchange export from the Packets tab. |
+| **D7** | **APPROVED** | stayed | Credentials in exports. | Same-length masking on by default; include-credentials checkbox not persisted. |
+| **D8** | **APPROVED** (explicitly confirmed) | **CHANGED** | Memory defaults and eviction. | Same sizes (snap 65,535 B; 200k frames; 128 MiB; 20k queue; 16 MiB kernel buffer; 32 MiB reassembly in PT2), but **linked-first retention** instead of plain oldest-first: unlinked frames go first, then frames of sessions already evicted from the store, then linked frames (≤ 75 % of the budget). Reason: the Proxy detail must still show packets for sessions visible in the feed. |
+| **D9** | **APPROVED** | **CHANGED** (detail) | Default capture filter. | Same generated filter (listen ports + upstream + simulator targets + ICMP/DNS), now **regenerated automatically on every proxy start** when capturing from the Proxy tab; a custom filter is pinned only from the Packet Trace tab and flagged on the Proxy chip. |
+| **D10** | **APPROVED** | stayed (more important) | Default devices. | Auto: the NIC owning the proxy bind address (all up physical NICs when `0.0.0.0`) **plus Loopback** when the upstream or a simulator target is local. This is now the normal path (no device picker in the Proxy tab), so PT0.1 must verify it on a real PC. |
+| **D11** | **APPROVED** (explicitly confirmed) | **CHANGED** | Packets in existing views. | **MVP:** a **Packets** tab in the session detail (shared by Proxy and Simulator; Summary/Headers/Raw unchanged), exchange or session scope, both legs, compact list/tree/hex, live refresh, export/Wireshark; plus the **Capture packets** toggle + status chip + "connections without a session" counter on the Proxy toolbar. *(Was: no changes to existing views in the MVP; links only in PT3.)* |
+| **D12** | **APPROVED** | stayed | Offline "wire sessions". | Display-only in the Packet Trace tab (PT3); never inserted into `InMemorySessionStore`. |
+| **D13** | **APPROVED** | stayed (now also required for the exchange view) | Core changes for correlation. | Additive `ExchangeEndpoints` + `ISessionSink.SetExchangeEndpoints` (default no-op) + `PhaseTracker.LocalEndPoint`/`ConnectionSerial`; correlator polls `GetAll()`. |
+| **D14** | **APPROVED** | stayed | TLS on the wire. | Record-layer only; no key logging on Windows. On HTTPS legs the Packets tab uses the "by time" basis and says so. |
+| **D15** | **APPROVED** (explicitly confirmed) | **NEW** | Does capture start with the proxy? | **Yes, via the persisted "Capture packets" toggle, default on** — effective only when Npcap is available (otherwise the chip explains and nothing else changes). The narrow default filter keeps the cost negligible. Alternative: default off with a one-time "Turn on packet capture?" prompt on first proxy start. |
+| **D16** | **APPROVED** (explicitly confirmed) | **NEW** | Exchange-level packets before PT2's reassembly. | Ship the MVP with **request-order segmentation + time-window fallback** (§6.4), with the match basis always displayed; PT2 upgrades to exact HTTP-message matching. |
 
 ## 15. How this complements (not duplicates) `HttpMessageCapture`
 
