@@ -14,7 +14,8 @@ Sizes: **S** ≤ ½ day · **M** 1–2 days · **L** 3–5 days (one developer).
 PLAN `Tn.x` or `M5-` IDs. "Files" lists the main files; **(new)** marks new files. Event ids for logging: **7000–7099**.
 
 Branch convention: one branch per milestone (`feat/packet-trace-pt1`, …), merged after ReviewerBot + TesterBot like earlier milestones.
-CI must stay green on Linux and Windows with **no** libpcap/Npcap installed.
+CI must stay green on Linux and Windows whether or not libpcap/Npcap is installed. Observed: the Linux runner has libpcap
+(Available path, non-root); the Windows runner has no Npcap (NotInstalled path).
 
 ---
 
@@ -55,8 +56,10 @@ CI must stay green on Linux and Windows with **no** libpcap/Npcap installed.
 ### PT0.2 Project skeleton + packages — S
 - **Description:** Add `src/AcsTool.PacketCapture` (net10.0, refs Core, `PackageReference SharpPcap` + `PacketDotNet`),
   `tests/AcsTool.PacketCapture.Tests`, solution entries, `InternalsVisibleTo`, central versions `SharpPcap 6.3.1`,
-  `PacketDotNet 1.4.8` in `Directory.Packages.props`. `ServiceCollectionExtensions.AddAcsToolPacketCapture()` (empty for now),
-  called from `AddAcsToolPresentation`. `THIRD-PARTY-NOTICES.md` (SharpPcap MIT, PacketDotNet MPL-2.0 + source URL).
+  `PacketDotNet 1.4.8` in `Directory.Packages.props`. `ServiceCollectionExtensions.AddAcsToolPacketCapture()`,
+  called from `AddAcsToolPresentation`. **Landed (a5a4cd1):** brought forward from PT1.1 — `ICaptureBackend.Probe()`,
+  `CaptureBackendInfo`/`CaptureBackendStatus`, `SharpPcapBackend.Probe()`, registered by `AddAcsToolPacketCapture()`.
+  Still pending from PT0.1: spike findings in `IMPLEMENTATION_NOTES.md` and `tests/fixtures/pcap/` (`spike/pt0-npcap`). `THIRD-PARTY-NOTICES.md` (SharpPcap MIT, PacketDotNet MPL-2.0 + source URL).
 - **Files:** `AcsTool.sln`, `Directory.Packages.props`, `src/AcsTool.PacketCapture/AcsTool.PacketCapture.csproj` (new),
   `src/AcsTool.PacketCapture/ServiceCollectionExtensions.cs` (new), `src/AcsTool.Presentation/AcsTool.Presentation.csproj`,
   `src/AcsTool.Presentation/ServiceCollectionExtensions.cs`, `tests/AcsTool.PacketCapture.Tests/*` (new), `THIRD-PARTY-NOTICES.md` (new), `README.md` (one line).
@@ -115,6 +118,7 @@ If time is short, **PT1.13 and the PCAP/PCAPNG reader half of PT1.2 may move to 
 (offline-file analysis, R7, then ships in PT1b).
 
 ### PT1.1 Capture backend abstraction + SharpPcap implementation — M
+- **Already landed in PT0.2:** `ICaptureBackend.Probe()`, `CaptureBackendInfo/Status`, `SharpPcapBackend.Probe()` and its tests.
 - **Description:** `ICaptureBackend`, `ICaptureSession`, `RawFrame`, `CaptureDeviceInfo`, `CaptureBackendInfo/Status`,
   `CaptureOpenOptions` (snaplen, promiscuous, kernel buffer, BPF, read timeout 100 ms, prefer ns timestamps), `CaptureCounters`,
   `CaptureOpenException` (user-facing message + `CaptureBackendStatus`). `SharpPcapBackend`: `Probe()` never throws (maps
@@ -125,7 +129,8 @@ If time is short, **PT1.13 and the PCAP/PCAPNG reader half of PT1.2 may move to 
   `DeviceSelector.Auto(devices, ProxySettings, simulatorTargets)` — no UI needed for the Proxy path.
 - **Files:** `src/AcsTool.PacketCapture/Backend/*.cs` (new), `tests/AcsTool.Testing/FakeCaptureBackend.cs` (new), tests.
 - **Deps:** PT0.2.
-- **Acceptance:** On Linux CI without libpcap: `Probe()` returns `NotInstalled` with a message, no exception. Fake backend contract
+- **Acceptance:** Without the native library (Windows CI runner, no Npcap; or a dev box without libpcap): `Probe()` returns
+  `NotInstalled` with a message, no exception. With it (Linux CI runner has libpcap): `Probe()` returns without throwing. Fake backend contract
   tests (start/stop idempotent, stop joins, counters). `DeviceSelector` table tests (bind 0.0.0.0 / specific IP / loopback upstream /
   remote upstream / simulator targeting local proxy). Live test `[SkippableFact]` only with `ACSTOOL_PCAP_LIVE=1`.
 
@@ -292,7 +297,7 @@ If time is short, **PT1.13 and the PCAP/PCAPNG reader half of PT1.2 may move to 
 - **Acceptance:** ReviewerBot doc review; every `PacketCaptureSettings` member documented with its default.
 
 ### PT1 acceptance (milestone)
-- **PT1-A1** No libpcap/Npcap on CI → all automated tests green on Linux and Windows runners with `CI=true`; `--smoke-exit` passes.
+- **PT1-A1** Whether or not libpcap/Npcap is present on CI (Linux runner has libpcap, Windows runner has no Npcap) → all automated tests green on Linux and Windows runners with `CI=true`; `--smoke-exit` passes.
 - **PT1-A2 (primary story)** With **Capture packets** on, a real CPE's Inform through the proxy shows, in the Proxy tab's session
   detail **Packets** tab, the frames of that exchange on both legs (CPE↔Proxy and Proxy↔ACS) with protocol tree and hex, and
   the match basis — without leaving the Proxy tab.
@@ -373,7 +378,7 @@ A6 (if done) perf improvement measured.
 
 ## TesterBot test plan
 
-### Automated — runs on Linux CI (and Windows CI) without libpcap/Npcap
+### Automated — runs on Linux CI (has libpcap) and Windows CI (no Npcap); none needs the native library
 
 | Area | Tests |
 |---|---|

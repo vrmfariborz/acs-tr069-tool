@@ -10,5 +10,6 @@ ReviewerBot's code and documentation reviews, kept as written at review time. Li
 | [REVIEW_chore-net10.md](REVIEW_chore-net10.md) | chore/net10 (.NET 10 migration) |
 | [REVIEW_fix-doc-findings.md](REVIEW_fix-doc-findings.md) | fix/doc-findings |
 | [REVIEW_docs-user-guide.md](REVIEW_docs-user-guide.md) | docs/user-guide |
+| [REVIEW_feat-packet-trace-PT0.2.md](REVIEW_feat-packet-trace-PT0.2.md) | feat/packet-trace (PT0.2 scaffold, a5a4cd1) |
 
 Test reports stay in `docs/` (for example [TEST_REPORT_M0-M4.md](../TEST_REPORT_M0-M4.md)).

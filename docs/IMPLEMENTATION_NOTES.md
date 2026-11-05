@@ -182,3 +182,12 @@ From the BUG TRIAGE in the user-guide review (items a, d, f, g; b, c, e and h ar
 - **d:** Settings *Restore defaults* keeps `proxy.tls` and `proxy.maxRequestBodyBytes`. The window doesn't edit them, so they're carried over like the Simulator/Ui/Logging sections. `Build()` already started from `_base.Proxy`; the loss came from `RestoreDefaults` replacing `_base`.
 - **f:** The CustomCa start error now reads "TLS mode CustomCa needs proxy.tls.customCaPath in settings.json." (no Settings → TLS page until M5).
 - **g:** The session detail Summary tab lists the selected exchange's proxy notes under "Proxy notes" (hidden when empty), via `ExchangeItemViewModel.Notes`/`HasNotes`. The XAML is covered by lint only; it needs a look in the Windows smoke run.
+
+## Packet trace skeleton (branch feat/packet-trace, PT0.2)
+
+`src/AcsTool.PacketCapture` with SharpPcap 6.3.1 and PacketDotNet 1.4.8, `ICaptureBackend.Probe()` (brought forward from PT1.1) and `AddAcsToolPacketCapture()`, called from `AddAcsToolPresentation`. Review: [docs/reviews/REVIEW_feat-packet-trace-PT0.2.md](reviews/REVIEW_feat-packet-trace-PT0.2.md).
+
+- **CI and the native library:** the Linux runner (ubuntu-latest) has libpcap, so `Probe()` takes the Available path there and `Probe_RealBackend_NativeLibraryMissing_IsNotInstalled` is skipped. The Windows runner has no Npcap, so the real NotInstalled path runs there. Live-capture tests stay opt-in (`ACSTOOL_PCAP_LIVE=1`).
+- **No load at startup:** Presentation smoke tests assert that neither SharpPcap nor PacketDotNet is loaded after building the shell, `InitializeAsync` and the `--smoke-exit` sequence. No Presentation test may call `Probe()` on the real backend.
+- **Review fixes done:** m1 (docs reworded), m2 (assembly-load smoke tests), m3 (exact SharpPcap copyright), m4 (Available with 0 devices gets a repair hint), n1 (task scope notes), n2 (design section refs), n3 (`LibPcapLiveDeviceList.New()`, one enumeration, no static), n4 (`libpcap.so.0` candidate), Known (`THIRD-PARTY-NOTICES.md` ships next to `AcsTool.exe`).
+- **Deferred:** n5 (friendlier BadImageFormat / wrong-architecture message) goes with the PT1.15 banners. n6: notices for the non-packet-capture packages (Serilog, CommunityToolkit.Mvvm, Microsoft.Extensions) are a follow-up; the file's intro now says it covers packet capture only. PT0.1 spike findings and `tests/fixtures/pcap/` are still pending from `spike/pt0-npcap`.

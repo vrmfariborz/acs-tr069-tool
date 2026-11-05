@@ -75,7 +75,7 @@ the wire it reuses the existing `ICwmpParser` and `IMessageSummarizer`.
 | Export | `src/AcsTool.Core/Export/AuthRedactor.cs` (`IsSensitive`, `Redact`). `IAppPaths.DefaultExportDir` = `Documents\AcsTool\exports` (`WindowsAppPaths` in `src/AcsTool.App/Services/PlatformServices.cs`). No export UI/service yet (PLAN M9). `IFileDialogService` exists. | PCAPNG writer + export dialog; credential masking consistent with PLAN Q11 / NFR-08 ("Authorization redacted in exports by default"). |
 | Logging | Serilog file sink in `App.xaml.cs`; event-id ranges per component (1xxx proxy, 9xxx app). | New range **7xxx** for packet capture. |
 | Privileges | `app.manifest`: `requestedExecutionLevel level="asInvoker"`. | Stay `asInvoker` (D4). |
-| CI | `.github/workflows/ci.yml`: Linux `build.sh` (all tests), Windows `build.ps1 -NoCoverage` + publish + `--smoke-exit`. No libpcap/Npcap on either runner is assumed. | All automated packet tests must pass **without** native libpcap (§8). |
+| CI | `.github/workflows/ci.yml`: Linux `build.sh` (all tests), Windows `build.ps1 -NoCoverage` + publish + `--smoke-exit`. Observed (PT0.2, run 42035784311): the Linux runner (ubuntu-latest) **has libpcap**, so `Probe()` takes the *Available* path there (non-root); the Windows runner has **no Npcap**, so the real *NotInstalled* path is exercised on Windows. | All automated packet tests must pass whether or not native libpcap/Npcap is present (§8); live-capture tests stay opt-in (`ACSTOOL_PCAP_LIVE=1`). |
 
 ### Gaps found in the current code (contradictions with the brief's assumptions)
 
@@ -109,7 +109,8 @@ SharpPcap 6.3.1 + PacketDotNet 1.4.8 with `TreatWarningsAsErrors=true` and `Anal
 **0 warnings**. Without libpcap installed: `Pcap.Version` returns a "can't be identified" string (no throw), and
 `CaptureDeviceList.Instance` throws **`DllNotFoundException`** ("Unable to load shared library 'wpcap'"). PacketDotNet building and
 re-parsing an Ethernet/IPv4/TCP frame works with no native library. ⇒ Decoding, file I/O, reassembly and correlation can all be
-tested on Linux CI; only live capture needs the native library, and its absence is a catchable `DllNotFoundException`.
+tested on any CI runner; only live capture needs the native library, and its absence is a catchable `DllNotFoundException`
+(observed in CI on the Windows runner, which has no Npcap; the Linux runner has libpcap — §3 "CI").
 
 Central versions go into `Directory.Packages.props` (`SharpPcap 6.3.1`, `PacketDotNet 1.4.8`). Reference `PacketDotNet` explicitly
 (not only transitively) so its version is pinned. Watch for NuGet pruning warnings (NU1510) on the `System.*` transitive packages
