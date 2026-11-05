@@ -80,6 +80,22 @@ public class ClientSessionTests
         Assert.Equal(SessionOutcome.Completed, snap.Outcome);
     }
 
+    [Fact]
+    public async Task TransportEndpoints_ForwardedThroughSinkToStoredExchange()
+    {
+        // Review n4: RecordingSink must forward SetExchangeEndpoints to the store.
+        var ep = new ExchangeEndpoints(null, null, null, System.Net.IPEndPoint.Parse("127.0.0.1:50000"),
+            System.Net.IPEndPoint.Parse("127.0.0.1:7547"), 1);
+        _t.Then(p => FakeTransport.Ok(Kit.Builder.Build(new InformResponseMessage(1), CwmpVersion.V1_0, new CwmpHeader(p.Envelope!.Header.Id))) with { Endpoints = ep })
+            .Then(_ => FakeTransport.Ok([], 204) with { Endpoints = ep with { UpstreamConnectionSerial = 2 } });
+        var r = await Run();
+        Assert.Equal(SessionOutcome.Completed, r.Outcome);
+        var ex = _store.Get(r.SessionId)!.Exchanges;
+        Assert.Equal(2, ex.Count);
+        Assert.Equal(ep, ex[0].Endpoints);
+        Assert.Equal(2, ex[1].Endpoints!.UpstreamConnectionSerial);
+    }
+
     public static TheoryData<CwmpMessage, CwmpMessageKind> Rpcs() => new()
     {
         { new GetRpcMethodsMessage(), CwmpMessageKind.GetRPCMethodsResponse },

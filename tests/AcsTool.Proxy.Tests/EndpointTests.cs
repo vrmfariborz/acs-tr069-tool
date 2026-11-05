@@ -102,6 +102,27 @@ public class EndpointTests
     }
 
     [Fact]
+    public async Task DualModeBind_IPv4Cpe_DownstreamStoredAsIPv4()
+    {
+        // Review n1: with BindAddress "::" (dual-mode) Kestrel reports the IPv4 CPE as ::ffff:127.0.0.1; it is stored as IPv4.
+        await using var acs = await FakeAcs.StartAsync(o => o.Script = s => InformThenEmpty(s));
+        await using var h = await ProxyHarness.StartAsync(acs, s => s with { BindAddress = "::" });
+        using var cpe = new RecordingCpe();
+
+        (await cpe.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform()))).Dispose();
+        (await cpe.SendAsync(ProxyHarness.Post(h.Url(), null))).Dispose();
+
+        var s = await h.WaitForEndedAsync();
+        var cpeLocal = Assert.Single(cpe.Locals);
+        Assert.Equal(cpeLocal.ToString(), s.ClientEndpoint);
+        Assert.All(s.Exchanges, x =>
+        {
+            Assert.Equal(cpeLocal, x.Endpoints!.DownstreamRemote);
+            Assert.Equal(new IPEndPoint(IPAddress.Loopback, h.Server.BoundPort), x.Endpoints.DownstreamLocal);
+        });
+    }
+
+    [Fact]
     public async Task UpstreamConnectRefused_DownstreamOnly_UpstreamNull()
     {
         await using var acs = await FakeAcs.StartAsync();

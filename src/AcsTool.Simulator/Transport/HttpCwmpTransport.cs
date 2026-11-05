@@ -105,11 +105,13 @@ public sealed class HttpCwmpTransport : ICwmpTransport
 
         var r = await UpstreamSender.SendAsync(_invoker, req, _tracker, _timeout, 16 * 1024 * 1024, _time, ct, () => _lastTlsErrors)
             .ConfigureAwait(false);
-        // Review m2: after an auto-redirect the final response came over the redirect target's pool, while the tracker may show
-        // another socket, so the upstream socket is only claimed when the request was not redirected.
-        var upstream = _tracker.SnapshotUpstream();
-        var redirected = req.RequestUri is { } final && final != _url;
-        var endpoints = ExchangeEndpoints.Create(null, null, null, redirected ? null : upstream);
+        // Review M1: the handler holds one pool per authority (original ACS and any redirect target) but one tracker, which only
+        // knows the last socket that connected. Claim it only when it was opened to the authority of the final request URI;
+        // otherwise (e.g. a pooled reuse of the original ACS socket after a redirect connected the target) report no upstream.
+        // Review m1: a request that failed at DNS/connect never used a socket, even if a background connect lands afterwards.
+        var upstream = r.Error is { Phase: RequestPhase.Dns or RequestPhase.Connect } ? (UpstreamSnapshot?)null
+            : _tracker.SnapshotUpstream(req.RequestUri ?? _url);
+        var endpoints = ExchangeEndpoints.Create(null, null, null, upstream);
         var reqHeaders = CaptureRequestHeaders(req);
         var capture = HttpMessageCapture.From("POST", req.RequestUri?.ToString() ?? _url.ToString(), null, reqHeaders, body.Span, _capture.MaxCapturedBodyBytes);
         return new TransportResponse(r.StatusCode, r.Headers, r.Body, r.Error, r.Timings, capture)

@@ -10,12 +10,11 @@ namespace AcsTool.Core.Net;
 /// </summary>
 public sealed class PhaseTracker
 {
-    // Set by MarkConnected, cleared by Reset: a socket connected during the current exchange (PT0.4, review m2).
-    private bool _connectedThisExchange;
-
     private readonly object _lock = new();
     private bool _dnsDone;
     private bool _connected;
+    // Set by MarkConnected, cleared by Reset: a socket connected during the current exchange (PT0.4, review m2).
+    private bool _connectedThisExchange;
     private bool _tlsDone;
     private bool _headers;
     private TimeSpan? _dns;
@@ -23,8 +22,9 @@ public sealed class PhaseTracker
     private TimeSpan? _toHeaders;
     private IPEndPoint? _localEndPoint;
     private long _connectionSerial;
-
     private IPEndPoint? _remoteEndPoint;
+    // Host/port the current socket was opened to (ConnectCallback's DnsEndPoint), PT0.4 review M1.
+    private DnsEndPoint? _target;
 
     /// <summary>Remote endpoint of the current upstream socket, IPv4-mapped IPv6 normalised; null until connected.</summary>
     public IPEndPoint? RemoteEndPoint { get { lock (_lock) { return _remoteEndPoint; } } }
@@ -51,7 +51,10 @@ public sealed class PhaseTracker
     }
 
     /// <summary>A new connection is being established.</summary>
-    public void BeginConnect()
+    public void BeginConnect() => BeginConnect(null);
+
+    /// <summary>A new connection is being established to <paramref name="target"/> (the ConnectCallback's DnsEndPoint).</summary>
+    public void BeginConnect(DnsEndPoint? target)
     {
         lock (_lock)
         {
@@ -60,6 +63,7 @@ public sealed class PhaseTracker
             _tlsDone = false;
             _localEndPoint = null;
             _remoteEndPoint = null; // review m4: a failed reconnect must not report the previous socket's remote
+            _target = target;
             _connectionSerial++;
         }
     }
@@ -116,8 +120,20 @@ public sealed class PhaseTracker
         lock (_lock)
         {
             return new UpstreamSnapshot(_localEndPoint, _remoteEndPoint, _connectionSerial, _connected,
-                _connected && (_connectedThisExchange || _headers));
+                _connected && (_connectedThisExchange || _headers)) { Target = _target };
         }
+    }
+
+    /// <summary>
+    /// Like <see cref="SnapshotUpstream()"/>, but the socket is only claimed when it was opened to the host and port of
+    /// <paramref name="finalRequestUri"/> (PT0.4, review M1). Use this when one handler can hold connections to more than one
+    /// authority (simulator auto-redirects): the tracker only knows the last socket that connected, which may belong to
+    /// another pool than the one that carried the exchange.
+    /// </summary>
+    public UpstreamSnapshot SnapshotUpstream(Uri? finalRequestUri)
+    {
+        var s = SnapshotUpstream();
+        return s.CarriedCurrentExchange && !s.TargetMatches(finalRequestUri) ? s with { CarriedCurrentExchange = false } : s;
     }
 
     public TimeSpan? DnsDuration { get { lock (_lock) { return _dns; } } }
@@ -157,4 +173,13 @@ public sealed class PhaseTracker
 /// socket connected during it, or it received response headers. False when it failed before connecting or while waiting for a
 /// pooled connection; also false when it timed out on a reused pooled socket before headers (conservative, review m2).
 /// </param>
-public readonly record struct UpstreamSnapshot(IPEndPoint? Local, IPEndPoint? Remote, long Serial, bool Connected, bool CarriedCurrentExchange);
+public readonly record struct UpstreamSnapshot(IPEndPoint? Local, IPEndPoint? Remote, long Serial, bool Connected, bool CarriedCurrentExchange)
+{
+    /// <summary>Host and port the socket was opened to (ConnectCallback's DnsEndPoint); null when not recorded (PT0.4, review M1).</summary>
+    public DnsEndPoint? Target { get; init; }
+
+    /// <summary>True when <see cref="Target"/> is the host and port of <paramref name="uri"/> (host case-insensitive, IPv6 brackets ignored).</summary>
+    public bool TargetMatches(Uri? uri) =>
+        Target is { } t && uri is { IsAbsoluteUri: true } && t.Port == uri.Port
+        && string.Equals(t.Host.Trim('[', ']'), uri.IdnHost.Trim('[', ']'), StringComparison.OrdinalIgnoreCase);
+}

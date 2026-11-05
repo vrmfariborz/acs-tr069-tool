@@ -87,8 +87,11 @@ public sealed class ProxyRequestHandler
                 var timings = result.Timings with { Total = _time.GetElapsedTime(ts) };
                 _sink.CompleteExchange(session.SessionId, seq, respCap, respSummary, result.Error, timings, notes);
                 // PT0.4: downstream from the CPE connection; upstream only if this exchange's socket is known (review m2/m3).
+                // PT0.4 review m1: a failure at DNS/connect used no socket, even if a background connect lands before the snapshot.
+                var upstream = result.Error is { Phase: RequestPhase.Dns or RequestPhase.Connect } ? (UpstreamSnapshot?)null
+                    : session.Tracker.SnapshotUpstream();
                 _sink.SetExchangeEndpoints(session.SessionId, seq, ExchangeEndpoints.Create(req.ConnectionId, req.RemoteEndPoint,
-                    req.LocalEndPoint, session.Tracker.SnapshotUpstream()));
+                    req.LocalEndPoint, upstream));
                 if (parsed.Kind == CwmpMessageKind.Inform && summary.DeviceId is { } dev && session.DeviceKey is null)
                 {
                     session.DeviceKey = dev.Key;
@@ -208,6 +211,8 @@ public sealed class ProxyRequestHandler
         {
             LocalIp = local?.ToString(),
             LocalPort = ctx.Connection.LocalPort,
+            RemoteAddress = remote,
+            LocalAddress = local,
         };
     }
 

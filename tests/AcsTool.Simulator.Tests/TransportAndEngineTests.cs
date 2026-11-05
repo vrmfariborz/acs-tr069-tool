@@ -118,9 +118,10 @@ public class TransportTests
     }
 
     [Fact]
-    public async Task Endpoints_AfterAcsRedirect_UpstreamNotClaimed()
+    public async Task Endpoints_AfterAcsRedirect_ClaimsRedirectTargetSocket()
     {
-        // Review m2: the final response came over the redirect target's pool; the tracker may show another socket.
+        // Review M1: the redirected exchange's final response came over the redirect target's socket, which connected during
+        // this exchange to the final request URI's authority, so it is claimed (PT0.4 initially reported null here).
         await using var target = await FakeAcs.StartAsync();
         await using var acs = await FakeAcs.StartAsync(o => o.Override = _ => new FakeAcsResponse
         {
@@ -134,9 +135,43 @@ public class TransportTests
         Assert.Equal(200, r.StatusCode);
         Assert.Single(target.Received);
         Assert.NotNull(r.Endpoints);
-        Assert.Null(r.Endpoints.UpstreamLocal);
-        Assert.Null(r.Endpoints.UpstreamRemote);
-        Assert.Null(r.Endpoints.UpstreamConnectionSerial);
+        Assert.Equal(new IPEndPoint(IPAddress.Loopback, target.Port), r.Endpoints.UpstreamRemote);
+        Assert.Equal(target.Received[0].RemoteEndPoint, r.Endpoints.UpstreamLocal);
+        Assert.Equal(2, r.Endpoints.UpstreamConnectionSerial);
+    }
+
+    [Fact]
+    public async Task Endpoints_RedirectOnlyFirst_SecondExchangeClaimsOriginalSocketOrNull()
+    {
+        // Review M1 regression: req1 → 307 to a second ACS; req2 is answered normally over the original pooled connection.
+        // The tracker's last socket is the redirect target's, so it must not be credited to exchange 2.
+        await using var target = await FakeAcs.StartAsync();
+        await using var acs = await FakeAcs.StartAsync(o => o.Override = req => req.Index == 1
+            ? new FakeAcsResponse { Status = 307, Headers = [new("Location", target.Url())] }
+            : null);
+        await using var t = Transport(acs.Url());
+
+        var r1 = await t.PostAsync(Inform(), "\"\"", default);
+        var r2 = await t.PostAsync(Inform(), "\"\"", default);
+
+        Assert.Equal(200, r1.StatusCode);
+        Assert.Equal(200, r2.StatusCode);
+        Assert.Single(target.Received);
+        Assert.Equal(2, acs.Received.Count);
+        Assert.Equal(acs.Received[0].RemoteEndPoint, acs.Received[1].RemoteEndPoint); // exchange 2 reused the original socket
+        var e2 = r2.Endpoints;
+        Assert.NotNull(e2);
+        Assert.NotEqual(target.Received[0].RemoteEndPoint, e2.UpstreamLocal);
+        if (e2.UpstreamLocal is not null)
+        {
+            Assert.Equal(acs.Received[1].RemoteEndPoint, e2.UpstreamLocal);
+            Assert.Equal(new IPEndPoint(IPAddress.Loopback, acs.Port), e2.UpstreamRemote);
+        }
+        else
+        {
+            Assert.Null(e2.UpstreamRemote);
+            Assert.Null(e2.UpstreamConnectionSerial);
+        }
     }
 }
 
