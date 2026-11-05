@@ -3,14 +3,19 @@ using SharpPcap.LibPcap;
 
 namespace AcsTool.PacketCapture.Backend;
 
-/// <summary>One open <see cref="LibPcapLiveDevice"/> session. The capture callback only copies bytes (PT-1).</summary>
+/// <summary>
+/// One open <see cref="LibPcapLiveDevice"/> session. The capture callback only copies bytes and takes no lock (PT-1):
+/// it reads the frame delegate with <see cref="Volatile.Read{T}(ref T)"/>. <c>_lifecycle</c> serialises
+/// Start/Stop/Dispose only; the capture thread never touches it, so <see cref="Stop"/> can join the capture thread.
+/// </summary>
 internal sealed class SharpPcapCaptureSession : ICaptureSession
 {
     private readonly LibPcapLiveDevice _device;
-    private readonly object _gate = new();
+    private readonly object _lifecycle = new();
     private Action<RawFrame>? _onFrame;
     private bool _started;
     private bool _disposed;
+    private long _callbackFailures;
 
     public SharpPcapCaptureSession(LibPcapLiveDevice device, CaptureDeviceInfo info, int interfaceId, LinkKind linkType)
     {
@@ -24,86 +29,88 @@ internal sealed class SharpPcapCaptureSession : ICaptureSession
     public LinkKind LinkType { get; }
     public CaptureDeviceInfo Device { get; }
 
+    /// <summary>Diagnostics: frames whose copy or consumer callback threw (they are dropped; capture keeps running).</summary>
+    internal long CallbackFailures => Interlocked.Read(ref _callbackFailures);
+
     public void Start(Action<RawFrame> onFrame)
     {
         ArgumentNullException.ThrowIfNull(onFrame);
-        lock (_gate)
+        lock (_lifecycle)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
             if (_started)
                 return;
-            _onFrame = onFrame;
+            Volatile.Write(ref _onFrame, onFrame);
             _device.OnPacketArrival += OnPacketArrival;
-            _device.StartCapture();
+            try
+            {
+                _device.StartCapture();
+            }
+            catch (Exception ex)
+            {
+                // Leave no handler behind: a retried Start must not deliver every frame twice (review m1).
+                _device.OnPacketArrival -= OnPacketArrival;
+                Volatile.Write(ref _onFrame, null);
+                throw new CaptureOpenException(
+                    $"Could not start capturing on '{Device.FriendlyName}': {ex.Message}",
+                    CaptureBackendStatus.Error,
+                    ex);
+            }
+
             _started = true;
         }
     }
 
     public void Stop()
     {
-        lock (_gate)
+        lock (_lifecycle)
         {
-            if (!_started || _disposed)
+            if (!_started || Volatile.Read(ref _disposed))
                 return;
-            try
-            {
-                if (_device.Started)
-                    _device.StopCapture();
-            }
-            finally
-            {
-                _device.OnPacketArrival -= OnPacketArrival;
-                _onFrame = null;
-                _started = false;
-            }
+            StopCore();
         }
     }
 
     public CaptureCounters ReadCounters()
     {
-        lock (_gate)
+        // No lifecycle lock: a poll must not wait behind a Stop that is joining the capture thread, and the capture thread
+        // never waits on this. A race with Dispose closing the handle surfaces as an exception and yields default counters.
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
+        try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            try
-            {
-                var stats = _device.Statistics;
-                if (stats is null)
-                    return default;
-                return new CaptureCounters(stats.ReceivedPackets, stats.DroppedPackets, stats.InterfaceDroppedPackets);
-            }
-#pragma warning disable CA1031 // Counters are best-effort; a failed poll must not stop capture.
-            catch (Exception)
-#pragma warning restore CA1031
-            {
+            var stats = _device.Statistics;
+            if (stats is null)
                 return default;
-            }
+            return new CaptureCounters(stats.ReceivedPackets, stats.DroppedPackets, stats.InterfaceDroppedPackets);
+        }
+#pragma warning disable CA1031 // Counters are best-effort; a failed poll must not stop capture.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return default;
         }
     }
 
     public void Dispose()
     {
-        lock (_gate)
+        lock (_lifecycle)
         {
             if (_disposed)
                 return;
+            Volatile.Write(ref _disposed, true);
             try
             {
                 if (_started)
                 {
                     try
                     {
-                        if (_device.Started)
-                            _device.StopCapture();
+                        StopCore();
                     }
 #pragma warning disable CA1031 // Dispose must not throw.
                     catch (Exception)
 #pragma warning restore CA1031
                     {
                     }
-
-                    _device.OnPacketArrival -= OnPacketArrival;
-                    _onFrame = null;
-                    _started = false;
                 }
 
                 if (_device.Opened)
@@ -115,19 +122,31 @@ internal sealed class SharpPcapCaptureSession : ICaptureSession
 #pragma warning restore CA1031
             {
             }
-            finally
-            {
-                _disposed = true;
-            }
+        }
+    }
+
+    /// <summary>Caller holds <c>_lifecycle</c>. Clears the delegate first so in-flight packets become no-ops, then joins.</summary>
+    private void StopCore()
+    {
+        Volatile.Write(ref _onFrame, null);
+        try
+        {
+            // Waits up to StopCaptureTimeout for the capture thread (set in SharpPcapBackend.Open, review m4). The capture
+            // thread never contends on our lock, so under traffic it exits as soon as libpcap's loop sees the break.
+            if (_device.Started)
+                _device.StopCapture();
+        }
+        finally
+        {
+            _device.OnPacketArrival -= OnPacketArrival;
+            _started = false;
         }
     }
 
     private void OnPacketArrival(object sender, SharpPcap.PacketCapture e)
     {
-        // PT-1: copy + stamp only. No logging, decoding, locks beyond reading the delegate, or exceptions escaping.
-        Action<RawFrame>? callback;
-        lock (_gate)
-            callback = _onFrame;
+        // PT-1: copy + stamp only. Lock-free (volatile read of the delegate), no logging or decoding, no exception escapes.
+        var callback = Volatile.Read(ref _onFrame);
         if (callback is null)
             return;
 
@@ -144,6 +163,7 @@ internal sealed class SharpPcapCaptureSession : ICaptureSession
         catch (Exception)
 #pragma warning restore CA1031
         {
+            Interlocked.Increment(ref _callbackFailures);
         }
     }
 

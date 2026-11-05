@@ -133,6 +133,11 @@ If time is short, **PT1.13 and the PCAP/PCAPNG reader half of PT1.2 may move to 
   `NotInstalled` with a message, no exception. With it (Linux CI runner has libpcap): `Probe()` returns without throwing. Fake backend contract
   tests (start/stop idempotent, stop joins, counters). `DeviceSelector` table tests (bind 0.0.0.0 / specific IP / loopback upstream /
   remote upstream / simulator targeting local proxy). Live test `[SkippableFact]` only with `ACSTOOL_PCAP_LIVE=1`.
+- **Landed (5d747b9, review fixes on `feat/packet-trace-pt1`):** `ICaptureBackend.ListDevices/Open`, `ICaptureSession`,
+  `SharpPcapBackend`/`SharpPcapCaptureSession`, `DeviceSelector.Auto`, `FakeCaptureBackend`. Review
+  [REVIEW_feat-packet-trace-PT1.1.md](reviews/REVIEW_feat-packet-trace-PT1.1.md) fixes: M1 lock-free capture callback, Stop joins;
+  m1 failed Start detaches; m2 loopback bind (D10); m3 native-free `LibPcapLiveDevice` test seam; m4 `StopCaptureTimeout` ≥ 750 ms;
+  m5 docs; n1–n3. Details in `IMPLEMENTATION_NOTES.md`. Live open/start/stop still only verified with `ACSTOOL_PCAP_LIVE=1`.
 
 ### PT1.2 Managed PCAPNG writer (critical) + PCAP/PCAPNG reader (PT1b-able) — M
 - **Description:** **Writer** (needed by export, PT1.12): `PcapngWriter` (SHB with `shb_userappl`, one IDB per interface,

@@ -17,8 +17,14 @@ public sealed class SharpPcapBackend : ICaptureBackend
     private const uint PcapIfLoopback = 0x0000_0001;
     private const uint PcapIfUp = 0x0000_0002;
 
+    /// <summary>Lower bound for <see cref="PcapDevice.StopCaptureTimeout"/>: SharpPcap's Unix loop polls for up to 500 ms (review m4).</summary>
+    internal static readonly TimeSpan MinStopCaptureTimeout = TimeSpan.FromMilliseconds(750);
+
     private readonly Func<int> _countDevices;
     private readonly Func<string?> _version;
+    // Typed object, not LibPcapLiveDevice: no field or constructor signature on the default construction path may name a
+    // SharpPcap type, or constructing the backend would load SharpPcap (Presentation smoke tests).
+    private readonly Func<string, object?>? _findDeviceOverride;
 
     public SharpPcapBackend()
         : this(CountLiveDevices, () => Pcap.Version)
@@ -30,6 +36,13 @@ public sealed class SharpPcapBackend : ICaptureBackend
     {
         _countDevices = countDevices;
         _version = version;
+    }
+
+    /// <summary>Test seam: also replaces the device lookup in <see cref="Open"/> (tests pass a <see cref="LibPcapLiveDevice"/> subclass).</summary>
+    internal SharpPcapBackend(Func<int> countDevices, Func<string?> version, Func<string, LibPcapLiveDevice?> findDevice)
+        : this(countDevices, version)
+    {
+        _findDeviceOverride = findDevice;
     }
 
     internal static string LibraryName => OperatingSystem.IsWindows() ? "Npcap" : "libpcap";
@@ -78,7 +91,7 @@ public sealed class SharpPcapBackend : ICaptureBackend
         LibPcapLiveDevice? live = null;
         try
         {
-            live = FindDevice(device.Name) ?? throw new CaptureOpenException(
+            live = (_findDeviceOverride is { } find ? (LibPcapLiveDevice?)find(device.Name) : FindDevice(device.Name)) ?? throw new CaptureOpenException(
                 $"Capture device '{device.FriendlyName}' ({device.Name}) was not found. It may have been removed.",
                 CaptureBackendStatus.Error);
 
@@ -95,6 +108,9 @@ public sealed class SharpPcapBackend : ICaptureBackend
             // Some drivers reject KernelBufferSize / ns timestamps; ConfigurationFailed is informational — Open still proceeds
             // with defaults (spike PT0.1). We ignore the event and rely on Open throwing when the open itself fails.
             live.Open(config);
+            // Open sets StopCaptureTimeout = 2 × ReadTimeout (200 ms by default), shorter than SharpPcap's 500 ms Unix poll, so a
+            // quick Stop → Start could briefly run two capture loops on one handle. Stop still returns as soon as the thread exits.
+            live.StopCaptureTimeout = StopCaptureTimeoutFor(options);
 
             if (!string.IsNullOrWhiteSpace(options.BpfFilter))
             {
@@ -134,6 +150,12 @@ public sealed class SharpPcapBackend : ICaptureBackend
         }
     }
 
+    internal static TimeSpan StopCaptureTimeoutFor(CaptureOpenOptions options)
+    {
+        var twiceRead = TimeSpan.FromMilliseconds(2.0 * Math.Max(0, options.ReadTimeoutMilliseconds));
+        return twiceRead > MinStopCaptureTimeout ? twiceRead : MinStopCaptureTimeout;
+    }
+
     internal static CaptureBackendInfo Classify(Exception ex)
     {
         var root = Unwrap(ex);
@@ -145,7 +167,10 @@ public sealed class SharpPcapBackend : ICaptureBackend
             return new CaptureBackendInfo(CaptureBackendStatus.NotInstalled, null, hint, 0);
         }
 
-        if (root is UnauthorizedAccessException || (root is PcapException && MentionsAccess(root.Message)))
+        if (root is UnauthorizedAccessException
+            || root is PcapException { Error: PcapError.PermissionDenied or PcapError.PromiscuousPermissionDenied }
+            // Fallback: many libpcap open failures arrive as PcapError.Generic with only the text (review n1).
+            || (root is PcapException && MentionsAccess(root.Message)))
         {
             return new CaptureBackendInfo(CaptureBackendStatus.AccessDenied, null,
                 $"{LibraryName} is installed but this user may not capture packets: {root.Message}", 0);

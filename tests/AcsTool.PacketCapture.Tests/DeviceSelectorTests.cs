@@ -141,6 +141,16 @@ public class DeviceSelectorTests
     [InlineData("http://[::1]/7557")]
     [InlineData("localhost")]
     [InlineData("127.0.0.1")]
+    [InlineData("127.0.0.1:7547")]
+    [InlineData("localhost:7547")]
+    [InlineData("[::1]:7547")]
+    [InlineData("[::1]")]
+    [InlineData("::1")]
+    [InlineData("::ffff:127.0.0.1")]
+    [InlineData("http://[::ffff:127.0.0.1]:7547/")]
+    [InlineData("192.168.1.10:7547")]
+    [InlineData("::ffff:192.168.1.10")]
+    [InlineData("[fe80::1]:7547")]
     public void IsLocalTarget_RecognisesLoopbackForms(string target)
     {
         Assert.True(DeviceSelector.IsLocalTarget(target, All));
@@ -151,8 +161,77 @@ public class DeviceSelectorTests
     [InlineData("https://203.0.113.1")]
     [InlineData("")]
     [InlineData(null)]
+    [InlineData("203.0.113.1:7547")]
+    [InlineData("[2001:db8::1]:7547")]
+    [InlineData("::ffff:203.0.113.1")]
     public void IsLocalTarget_RejectsRemoteOrEmpty(string? target)
     {
         Assert.False(DeviceSelector.IsLocalTarget(target, All));
+    }
+
+    [Theory]
+    [InlineData("127.0.0.1")]
+    [InlineData("::1")]
+    [InlineData("::ffff:127.0.0.1")]
+    public void Auto_BindLoopback_SelectsLoopbackDevices_Only(string bind)
+    {
+        // D10: the device that owns the bind address. Npcap's loopback adapter lists no addresses, so all loopback devices count.
+        var proxy = new ProxySettings(BindAddress: bind, UpstreamUrl: "http://acs.example:7557");
+
+        var selected = DeviceSelector.Auto(All, proxy);
+
+        Assert.Equal(new[] { Lo, NpfLoopback }, selected);
+    }
+
+    [Fact]
+    public void Auto_BindLoopback_LocalUpstream_NoDuplicates()
+    {
+        var proxy = new ProxySettings(BindAddress: "127.0.0.1", UpstreamUrl: "http://localhost:7557");
+
+        var selected = DeviceSelector.Auto(All, proxy);
+
+        Assert.Equal(new[] { Lo, NpfLoopback }, selected);
+    }
+
+    [Fact]
+    public void Auto_BindIPv4Mapped_SelectsOwningNic()
+    {
+        var proxy = new ProxySettings(BindAddress: "::ffff:10.0.0.5", UpstreamUrl: "http://acs.example:7557");
+
+        var selected = DeviceSelector.Auto(All, proxy);
+
+        Assert.Equal(new[] { Eth2 }, selected);
+    }
+
+    [Fact]
+    public void Auto_BindSpecificIp_OnDownNic_StillSelected()
+    {
+        // A specific bind names its NIC explicitly; the up flag only filters the 0.0.0.0 / :: case.
+        var proxy = new ProxySettings(BindAddress: "172.16.0.1", UpstreamUrl: "http://acs.example:7557");
+
+        var selected = DeviceSelector.Auto(All, proxy);
+
+        Assert.Equal(new[] { EthDown }, selected);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-an-ip")]
+    public void Auto_BindMissingOrInvalid_TreatedAsAny(string? bind)
+    {
+        var proxy = new ProxySettings(BindAddress: bind!, UpstreamUrl: "http://acs.example:7557");
+
+        var selected = DeviceSelector.Auto(All, proxy);
+
+        Assert.Equal(new[] { Eth1, Eth2 }, selected);
+    }
+
+    [Fact]
+    public void Auto_NoDevices_ReturnsEmpty()
+    {
+        var proxy = new ProxySettings(BindAddress: "0.0.0.0", UpstreamUrl: "http://localhost:7557");
+
+        Assert.Empty(DeviceSelector.Auto([], proxy, simulatorTargets: ["http://127.0.0.1:7547"]));
     }
 }

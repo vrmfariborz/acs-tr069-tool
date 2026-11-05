@@ -5,8 +5,8 @@ namespace AcsTool.PacketCapture.Backend;
 
 /// <summary>
 /// Picks the capture devices for the Proxy path (D10): the NIC(s) that own the proxy bind address
-/// (all up non-loopback NICs when binding <c>0.0.0.0</c>/<c>::</c>), plus Loopback when the upstream
-/// or a simulator target is local.
+/// (all up non-loopback NICs when binding <c>0.0.0.0</c>/<c>::</c>; the loopback device(s) when binding <c>127.0.0.1</c>/<c>::1</c>),
+/// plus Loopback when the upstream or a simulator target is local.
 /// </summary>
 public static class DeviceSelector
 {
@@ -32,9 +32,12 @@ public static class DeviceSelector
         }
         else
         {
+            // A loopback bind (127.0.0.1, ::1) is owned by the loopback device(s); Npcap's loopback adapter lists no addresses,
+            // so every loopback device counts (review m2).
+            var loopbackBind = IsLoopbackAddress(bind);
             foreach (var d in devices)
             {
-                if (!d.IsLoopback && DeviceOwnsAddress(d, bind))
+                if (DeviceOwnsAddress(d, bind) || (loopbackBind && d.IsLoopback))
                     selected.Add(d);
             }
         }
@@ -79,7 +82,7 @@ public static class DeviceSelector
 
         if (IPAddress.TryParse(host.Trim('[', ']'), out var ip))
         {
-            if (IPAddress.IsLoopback(ip))
+            if (IsLoopbackAddress(ip))
                 return true;
             // A host that is one of this machine's NIC addresses is local (self-connection → Loopback on Windows).
             foreach (var d in devices)
@@ -107,6 +110,9 @@ public static class DeviceSelector
 
         return false;
     }
+
+    private static bool IsLoopbackAddress(IPAddress ip) =>
+        IPAddress.IsLoopback(ip) || (ip.IsIPv4MappedToIPv6 && IPAddress.IsLoopback(ip.MapToIPv4()));
 
     private static IPAddress? ParseBind(string? bindAddress)
     {

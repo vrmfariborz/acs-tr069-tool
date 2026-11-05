@@ -57,15 +57,20 @@ public class FakeCaptureBackendTests
         }
 
         session.Stop();
+        var fake = Assert.IsType<FakeCaptureSession>(session);
+        Assert.True(fake.LastStopJoined); // the feeder thread had exited when Stop returned
+        int afterStop;
+        lock (got) afterStop = got.Count;
         session.Stop(); // idempotent
 
+        Thread.Sleep(50);
         lock (got)
         {
             Assert.NotEmpty(got);
+            Assert.Equal(afterStop, got.Count); // no callbacks after Stop
             Assert.All(got, f => Assert.Equal(7, f.InterfaceId));
         }
 
-        var fake = Assert.IsType<FakeCaptureSession>(session);
         Assert.False(fake.IsStarted);
     }
 
@@ -74,9 +79,25 @@ public class FakeCaptureBackendTests
     {
         var backend = new FakeCaptureBackend { Counters = new CaptureCounters(10, 2, 1) };
         var device = FakeCaptureBackend.Device("eth0");
-        using var session = backend.Open(device, CaptureOpenOptions.Default);
+        backend.Devices.Add(device);
+        var session = backend.Open(device, CaptureOpenOptions.Default);
 
         Assert.Equal(new CaptureCounters(10, 2, 1), session.ReadCounters());
+        backend.Counters = new CaptureCounters(20, 3, 1); // scripted change is visible to an open session
+        Assert.Equal(new CaptureCounters(20, 3, 1), session.ReadCounters());
+
+        session.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => session.ReadCounters());
+    }
+
+    [Fact]
+    public void Open_UnknownDevice_Throws_LikeRealBackend()
+    {
+        var backend = new FakeCaptureBackend();
+        backend.Devices.Add(FakeCaptureBackend.Device("eth0"));
+
+        var ex = Assert.Throws<CaptureOpenException>(() => backend.Open(FakeCaptureBackend.Device("gone0"), CaptureOpenOptions.Default));
+        Assert.Equal(CaptureBackendStatus.Error, ex.Status);
     }
 
     [Fact]
@@ -97,6 +118,7 @@ public class FakeCaptureBackendTests
     {
         var backend = new FakeCaptureBackend();
         var device = FakeCaptureBackend.Device("lo", loopback: true);
+        backend.Devices.Add(device);
         backend.ScriptedFrames["lo"] =
         [
             new RawFrame(0, 1, 1, new byte[] { 1 }),

@@ -29,6 +29,7 @@ public sealed class FakeCaptureBackend : ICaptureBackend
     /// <summary>Per-device open failure (overrides <see cref="OpenFailure"/> for that name).</summary>
     public Dictionary<string, CaptureOpenException> OpenFailuresByDevice { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>Counters every open session reports; read on each <see cref="ICaptureSession.ReadCounters"/>, so tests can change them mid-run.</summary>
     public CaptureCounters Counters { get; set; }
 
     /// <summary>Delay between scripted frames on the feeder thread (default none).</summary>
@@ -59,10 +60,17 @@ public sealed class FakeCaptureBackend : ICaptureBackend
             throw perDevice;
         if (OpenFailure is not null)
             throw OpenFailure;
+        // Like SharpPcapBackend.Open: a device that is not (or no longer) listed is an error.
+        if (!Devices.Any(d => string.Equals(d.Name, device.Name, StringComparison.Ordinal)))
+        {
+            throw new CaptureOpenException(
+                $"Capture device '{device.FriendlyName}' ({device.Name}) was not found. It may have been removed.",
+                CaptureBackendStatus.Error);
+        }
 
         var frames = ScriptedFrames.TryGetValue(device.Name, out var list) ? list : [];
         var interfaceId = options.InterfaceId != 0 ? options.InterfaceId : Interlocked.Increment(ref _nextInterfaceId);
-        var session = new FakeCaptureSession(device, interfaceId, frames, Counters, FrameDelay);
+        var session = new FakeCaptureSession(device, interfaceId, frames, () => Counters, FrameDelay);
         _sessions.Add(session);
         return session;
     }
@@ -87,7 +95,7 @@ public sealed class FakeCaptureBackend : ICaptureBackend
 public sealed class FakeCaptureSession : ICaptureSession
 {
     private readonly IReadOnlyList<RawFrame> _frames;
-    private readonly CaptureCounters _counters;
+    private readonly Func<CaptureCounters> _counters;
     private readonly TimeSpan _frameDelay;
     private readonly object _gate = new();
     private readonly ManualResetEventSlim _stop = new(false);
@@ -101,7 +109,7 @@ public sealed class FakeCaptureSession : ICaptureSession
         CaptureDeviceInfo device,
         int interfaceId,
         IReadOnlyList<RawFrame> frames,
-        CaptureCounters counters,
+        Func<CaptureCounters> counters,
         TimeSpan frameDelay)
     {
         Device = device;
@@ -116,6 +124,9 @@ public sealed class FakeCaptureSession : ICaptureSession
     public LinkKind LinkType { get; }
     public CaptureDeviceInfo Device { get; }
     public int Delivered => Volatile.Read(ref _delivered);
+
+    /// <summary>True when the last <see cref="Stop"/> joined the feeder thread (it had exited when Stop returned).</summary>
+    public bool LastStopJoined { get; private set; }
     public bool IsStarted
     {
         get { lock (_gate) return _started; }
@@ -129,7 +140,7 @@ public sealed class FakeCaptureSession : ICaptureSession
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_started)
                 return;
-            _onFrame = onFrame;
+            Volatile.Write(ref _onFrame, onFrame);
             _stop.Reset();
             _thread = new Thread(Feed) { IsBackground = true, Name = $"FakeCapture:{Device.Name}" };
             _thread.Start();
@@ -148,16 +159,22 @@ public sealed class FakeCaptureSession : ICaptureSession
             thread = _thread;
         }
 
-        thread?.Join(TimeSpan.FromSeconds(5));
+        var joined = thread?.Join(TimeSpan.FromSeconds(5)) ?? true;
         lock (_gate)
         {
             _started = false;
-            _onFrame = null;
+            Volatile.Write(ref _onFrame, null);
             _thread = null;
+            LastStopJoined = joined;
         }
     }
 
-    public CaptureCounters ReadCounters() => _counters;
+    public CaptureCounters ReadCounters()
+    {
+        lock (_gate)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+        return _counters();
+    }
 
     public void Dispose()
     {
@@ -178,8 +195,7 @@ public sealed class FakeCaptureSession : ICaptureSession
         {
             if (_stop.IsSet)
                 break;
-            Action<RawFrame>? cb;
-            lock (_gate) cb = _onFrame;
+            var cb = Volatile.Read(ref _onFrame); // lock-free, like the real capture callback (PT-1)
             if (cb is null)
                 break;
             // Stamp the session's interface id so scripted frames need not know it in advance.
