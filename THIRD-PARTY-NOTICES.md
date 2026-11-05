@@ -1,7 +1,8 @@
 # Third-party notices
 
-AcsTool uses the following third-party components. Microsoft .NET packages (`Microsoft.Extensions.*`, `System.*`) are MIT-licensed
-and not listed individually; the full list of package references is in `Directory.Packages.props`.
+This file currently covers the packet-capture dependencies added with the packet trace feature (PT0.2). Notices for the other
+package references in `Directory.Packages.props` (for example Serilog, CommunityToolkit.Mvvm and the Microsoft.Extensions packages)
+will be added in a follow-up. This file is copied next to `AcsTool.exe` in the published app.
 
 ## Packet capture (`src/AcsTool.PacketCapture`)
 
@@ -12,7 +13,7 @@ and not listed individually; the full list of package references is in `Director
 
 ### SharpPcap — MIT License
 
-Copyright (c) Tamir Gal, Chris Morgan and others.
+Copyright (c) Tamir Gal, Chris Morgan, Ayoub Kaanich, Noah Potash, Phillip Lemon, Evan Plaice
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files
 (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge,

@@ -8,7 +8,7 @@ public static class PacketCaptureServiceCollectionExtensions
 {
     /// <summary>
     /// Registers the packet-capture services (PT0.2 skeleton: only the backend). Registration and resolution load no native
-    /// code; the backend is probed lazily when capture is first needed (design §7).
+    /// code; the backend is probed lazily when capture is first needed (design §5.2/§5.4).
     /// </summary>
     public static IServiceCollection AddAcsToolPacketCapture(this IServiceCollection services)
     {

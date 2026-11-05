@@ -29,7 +29,8 @@ public class ProbeTests
     [SkippableFact]
     public void Probe_RealBackend_NativeLibraryMissing_IsNotInstalled()
     {
-        // The CI runners have no Npcap; this pins the real DllNotFoundException path end to end (design §4 spike result).
+        // Pins the real DllNotFoundException path end to end (design §4 spike result). It runs on the Windows CI runner (no
+        // Npcap) and on dev boxes without libpcap; the Linux CI runner has libpcap, so it is skipped there (review m1).
         Skip.If(NativePcapLoadable(), "Npcap/libpcap is installed here; Probe_RealBackend_NeverThrows_ReturnsConsistentInfo covers it.");
 
         var info = new SharpPcapBackend().Probe();
@@ -99,6 +100,16 @@ public class ProbeTests
     }
 
     [Fact]
+    public void Probe_ZeroDevices_IsAvailable_WithRepairHint()
+    {
+        var info = new SharpPcapBackend(() => 0, () => "Npcap version 1.80").Probe();
+
+        Assert.Equal(CaptureBackendStatus.Available, info.Status);
+        Assert.Equal(0, info.DeviceCount);
+        Assert.Contains("no capture devices were found", info.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Probe_VersionThrows_StillAvailable_WithoutVersion()
     {
         var info = new SharpPcapBackend(() => 1, () => throw new InvalidOperationException("boom")).Probe();
@@ -121,7 +132,7 @@ public class ProbeTests
     {
         string[] candidates = OperatingSystem.IsWindows()
             ? [Path.Combine(Environment.SystemDirectory, "Npcap", "wpcap.dll"), "wpcap"]
-            : ["libpcap.so.1", "libpcap.so", "libpcap.so.0.8", "libpcap.dylib", "wpcap"];
+            : ["libpcap.so", "libpcap.so.0", "libpcap.so.0.8", "libpcap.so.1", "libpcap.dylib", "wpcap"];
         foreach (var name in candidates)
         {
             if (NativeLibrary.TryLoad(name, out var handle))

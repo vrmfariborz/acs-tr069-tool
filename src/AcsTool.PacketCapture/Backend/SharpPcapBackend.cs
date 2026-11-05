@@ -1,11 +1,12 @@
 using System.Reflection;
 using SharpPcap;
+using SharpPcap.LibPcap;
 
 namespace AcsTool.PacketCapture.Backend;
 
 /// <summary>
 /// SharpPcap-based backend. Constructing it touches no native code; the native <c>wpcap</c>/<c>libpcap</c> is loaded by
-/// SharpPcap on the first <see cref="Probe"/> (never at app start, so <c>--smoke-exit</c> is unaffected; design §7).
+/// SharpPcap on the first <see cref="Probe"/> (never at app start, so <c>--smoke-exit</c> is unaffected; design §5.2/§5.4).
 /// </summary>
 public sealed class SharpPcapBackend : ICaptureBackend
 {
@@ -32,8 +33,10 @@ public sealed class SharpPcapBackend : ICaptureBackend
         {
             var count = _countDevices();
             var version = SafeVersion();
-            return new CaptureBackendInfo(CaptureBackendStatus.Available, version,
-                $"{LibraryName} is available ({count} capture device(s)).", count);
+            var message = count == 0
+                ? $"{LibraryName} is installed but no capture devices were found. The driver may need repairing (see troubleshooting)."
+                : $"{LibraryName} is available ({count} capture device(s)).";
+            return new CaptureBackendInfo(CaptureBackendStatus.Available, version, message, count);
         }
 #pragma warning disable CA1031 // Probe must never throw: every failure becomes a status (design §5.2).
         catch (Exception ex)
@@ -80,9 +83,10 @@ public sealed class SharpPcapBackend : ICaptureBackend
 
     private static int CountLiveDevices()
     {
-        // New() instead of Instance: a fresh enumeration each probe, so installing Npcap while the app runs is picked up,
-        // and a failed first load is not cached inside a static.
-        return CaptureDeviceList.New().Count;
+        // LibPcapLiveDeviceList.New(): exactly one fresh pcap_findalldevs per probe, so installing Npcap while the app runs is
+        // picked up, and neither a failure nor a device list is cached in a static (CaptureDeviceList.New() also fills
+        // LibPcapLiveDeviceList.Instance and enumerates several times; review n3).
+        return LibPcapLiveDeviceList.New().Count;
     }
 
     private static Exception Unwrap(Exception ex)
