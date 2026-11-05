@@ -7,5 +7,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\AcsTool.Core\AcsTool.Core.csproj" />
+    <ProjectReference Include="..\..\src\AcsTool.PacketCapture\AcsTool.PacketCapture.csproj" />
   </ItemGroup>
 </Project>
