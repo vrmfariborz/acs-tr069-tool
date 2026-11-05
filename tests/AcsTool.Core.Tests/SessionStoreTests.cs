@@ -227,8 +227,9 @@ public class SessionStoreTests
         var before = store.Get(id)!;
         var statsBefore = store.Stats;
         Drain(store);
+        ISessionSink sink = store; // review m1: producers hold ISessionSink; this must reach the store, not the default no-op
 
-        store.SetExchangeEndpoints(id, seq, Endpoints());
+        sink.SetExchangeEndpoints(id, seq, Endpoints());
 
         var after = store.Get(id)!;
         Assert.Equal(Endpoints(), after.Exchanges[0].Endpoints);

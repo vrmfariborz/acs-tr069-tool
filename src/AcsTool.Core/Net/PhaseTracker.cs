@@ -21,7 +21,10 @@ public sealed class PhaseTracker
     private IPEndPoint? _localEndPoint;
     private long _connectionSerial;
 
-    public IPEndPoint? RemoteEndPoint { get; private set; }
+    private IPEndPoint? _remoteEndPoint;
+
+    /// <summary>Remote endpoint of the current upstream socket, IPv4-mapped IPv6 normalised; null until connected.</summary>
+    public IPEndPoint? RemoteEndPoint { get { lock (_lock) { return _remoteEndPoint; } } }
 
     /// <summary>Local (ephemeral) endpoint of the current upstream socket, IPv4-mapped IPv6 normalised; null until connected.</summary>
     public IPEndPoint? LocalEndPoint { get { lock (_lock) { return _localEndPoint; } } }
@@ -52,6 +55,7 @@ public sealed class PhaseTracker
             _connected = false;
             _tlsDone = false;
             _localEndPoint = null;
+            _remoteEndPoint = null; // review m4: a failed reconnect must not report the previous socket's remote
             _connectionSerial++;
         }
     }
@@ -73,7 +77,7 @@ public sealed class PhaseTracker
             _dnsDone = true;
             _connected = true;
             _connect = d;
-            RemoteEndPoint = ep;
+            _remoteEndPoint = EndPointUtil.Normalize(ep);
             _localEndPoint = EndPointUtil.Normalize(local);
         }
     }

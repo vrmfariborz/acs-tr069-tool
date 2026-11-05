@@ -196,6 +196,11 @@ public sealed class InMemorySessionStore : ISessionStore
         NotifyRemoved(evicted);
     }
 
+    // Explicit implementation (PT0.3 review m1): if the interface signature drifts this stops compiling, instead of callers that
+    // hold an ISessionSink silently hitting the default no-op.
+    void ISessionSink.SetExchangeEndpoints(Guid sessionId, int seq, ExchangeEndpoints endpoints) =>
+        SetExchangeEndpoints(sessionId, seq, endpoints);
+
     public void SetExchangeEndpoints(Guid sessionId, int seq, ExchangeEndpoints endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);

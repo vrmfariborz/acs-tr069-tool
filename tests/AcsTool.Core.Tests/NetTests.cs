@@ -231,7 +231,7 @@ public class PhaseTrackerEndpointTests
     }
 
     [Fact]
-    public void BeginConnect_IncrementsSerial_ClearsLocal_ResetKeepsBoth()
+    public void BeginConnect_IncrementsSerial_ClearsLocalAndRemote_ResetKeepsThem()
     {
         var t = new PhaseTracker();
         t.BeginConnect();
@@ -241,11 +241,13 @@ public class PhaseTrackerEndpointTests
 
         Assert.Equal(1, t.ConnectionSerial);
         Assert.Equal(IPEndPoint.Parse("127.0.0.1:50000"), t.LocalEndPoint);
+        Assert.Equal(IPEndPoint.Parse("127.0.0.1:7557"), t.RemoteEndPoint);
 
         t.BeginConnect(); // a new socket; until it connects there is no local endpoint (connect failure → upstream local null)
 
         Assert.Equal(2, t.ConnectionSerial);
         Assert.Null(t.LocalEndPoint);
+        Assert.Null(t.RemoteEndPoint);
     }
 
     [Fact]
@@ -329,7 +331,7 @@ public sealed class LiveConnectEndpointTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Connect_Refused_LocalEndPointNull_SerialCounted()
+    public async Task Connect_RefusedAfterSuccessfulConnect_RemoteAndLocalNull_SerialCounted()
     {
         var closed = new TcpListener(IPAddress.Loopback, 0);
         closed.Start();
@@ -342,10 +344,17 @@ public sealed class LiveConnectEndpointTests : IAsyncDisposable
             UseProxy = false,
         };
         using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+        (await client.GetAsync(new Uri($"http://127.0.0.1:{Port}/keep"))).Dispose();
+        Assert.Equal(1, tracker.ConnectionSerial);
+        Assert.NotNull(tracker.RemoteEndPoint);
+        Assert.NotNull(tracker.LocalEndPoint);
+        tracker.Reset();
 
         await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync(new Uri($"http://127.0.0.1:{port}/")));
 
-        Assert.Equal(1, tracker.ConnectionSerial);
+        // Review m4: the failed attempt must not keep the previous socket's endpoints.
+        Assert.Equal(2, tracker.ConnectionSerial);
+        Assert.Null(tracker.RemoteEndPoint);
         Assert.Null(tracker.LocalEndPoint);
     }
 

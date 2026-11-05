@@ -11,5 +11,6 @@ ReviewerBot's code and documentation reviews, kept as written at review time. Li
 | [REVIEW_fix-doc-findings.md](REVIEW_fix-doc-findings.md) | fix/doc-findings |
 | [REVIEW_docs-user-guide.md](REVIEW_docs-user-guide.md) | docs/user-guide |
 | [REVIEW_feat-packet-trace-PT0.2.md](REVIEW_feat-packet-trace-PT0.2.md) | feat/packet-trace (PT0.2 scaffold, a5a4cd1) |
+| [REVIEW_feat-packet-trace-PT0.3.md](REVIEW_feat-packet-trace-PT0.3.md) | feat/packet-trace (PT0.3 transport endpoints, a9d2399) |
 
 Test reports stay in `docs/` (for example [TEST_REPORT_M0-M4.md](../TEST_REPORT_M0-M4.md)).

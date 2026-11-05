@@ -65,8 +65,9 @@ public sealed record ExchangeRecord(int Seq, HttpMessageCapture Request, Message
 /// <param name="DownstreamRemote">CPE ip:port as seen by the proxy.</param>
 /// <param name="DownstreamLocal">Proxy ip:port the CPE connected to.</param>
 /// <param name="UpstreamLocal">Ephemeral local ip:port of the socket to the ACS.</param>
-/// <param name="UpstreamRemote">ACS ip:port actually connected.</param>
-/// <param name="UpstreamConnectionSerial">Per-session upstream socket number; pooled reuse keeps it, a new socket increments it.</param>
+/// <param name="UpstreamRemote">ACS ip:port actually connected (or the HTTP proxy's, when one is used).</param>
+/// <param name="UpstreamConnectionSerial">Per-session upstream connection-attempt number: unique and increasing per session; pooled
+/// reuse keeps it, each new connect attempt increments it, so failed attempts leave gaps.</param>
 public sealed record ExchangeEndpoints(
     string? DownstreamConnectionId,
     IPEndPoint? DownstreamRemote,
