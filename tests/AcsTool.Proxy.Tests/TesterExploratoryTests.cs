@@ -214,8 +214,13 @@ public class TesterExploratoryTests
             await using var acs = await FakeAcs.StartAsync();
             await using var h = await ProxyHarness.StartAsync(acs, s => s with { RequestTimeoutSeconds = 1 }, upstreamOverride: $"http://127.0.0.1:{port}");
             using var client = ProxyHarness.CpeClient();
-            using var r = await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform("SILENT")));
+            var (r, elapsed) = await TestUtil.TimedAsync(() => client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform("SILENT"))),
+                TimeSpan.FromSeconds(30));
+            using var _ = r;
             Assert.Equal(HttpStatusCode.GatewayTimeout, r.StatusCode);
+            // 1 s request timeout, upstream never answers: [0.8 s, 8 s]. The upper bound catches an inflated timeout (the
+            // CPE client's own 20 s timeout would otherwise end it); the 30 s guard catches a hang.
+            Assert.InRange(elapsed, TimeSpan.FromSeconds(0.8), TimeSpan.FromSeconds(8));
             var err = (await h.WaitForEndedAsync()).Exchanges.Single().Error!;
             Assert.Equal(UpstreamErrorKind.Timeout, err.Kind);
             Assert.Equal(RequestPhase.AwaitingResponse, err.Phase);
@@ -249,8 +254,11 @@ public class TesterExploratoryTests
         await using var h = await ProxyHarness.StartAsync(acs, s => s with { RequestTimeoutSeconds = 1 });
         using var client = ProxyHarness.CpeClient();
         (await client.SendAsync(ProxyHarness.Post(h.Url(), ProxyHarness.Inform("MIDTO")))).EnsureSuccessStatusCode();
-        using var r2 = await client.SendAsync(ProxyHarness.Post(h.Url(), null));
+        var (r2, elapsed) = await TestUtil.TimedAsync(() => client.SendAsync(ProxyHarness.Post(h.Url(), null)), TimeSpan.FromSeconds(30));
+        using var _ = r2;
         Assert.Equal(HttpStatusCode.GatewayTimeout, r2.StatusCode);
+        // Same bounds as SlowUpstream_504AndTimeoutAwaitingResponse: 1 s timeout, [0.8 s, 3.5 s], below the 4 s scripted delay.
+        Assert.InRange(elapsed, TimeSpan.FromSeconds(0.8), TimeSpan.FromSeconds(3.5));
         var s = await h.WaitForEndedAsync();
         Assert.Equal(SessionOutcome.UpstreamError, s.Outcome);
         Assert.Equal(2, s.Exchanges.Count);

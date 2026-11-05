@@ -130,6 +130,34 @@ public class FeedPumpTests
         Assert.True(bad.Calls >= 2); // the pump kept running
     }
 
+    [Fact]
+    public async Task Stop_WhileCollecting_SkipsTheFinalUiFlush_RestartResyncs()
+    {
+        // Review n2: once shutdown is requested the pump does not dispatch a last batch to the (closing) UI. The changes it had
+        // already read are not lost for a restarted pump: the next batch carries a forced resync.
+        var time = new FakeTimeProvider();
+        var store = Kit.Store(time);
+        var consumer = new RecordingConsumer();
+        await using var pump = new SessionFeedPump(store, new SynchronousUiDispatcher(), time, NullLogger<SessionFeedPump>.Instance);
+        pump.Subscribe(consumer);
+        pump.Start();
+        Kit.StartSession(store, "A");
+        Assert.True(await TestUtil.WaitUntilAsync(() => pump.IsCollecting && store.Changes.Count == 0), "pump never read the change");
+
+        await pump.StopAsync(); // the flush deadline (fake time) has not fired
+        Assert.Equal(0, pump.DispatchCount);
+        Assert.Empty(consumer.Batches);
+        Assert.Equal(0, pump.ErrorCount);
+        Assert.False(pump.IsCollecting);
+
+        pump.Start();
+        Kit.StartSession(store, "B");
+        Assert.True(await TestUtil.WaitUntilAsync(() => pump.IsCollecting && store.Changes.Count == 0));
+        time.Advance(SessionFeedPump.FlushInterval);
+        Assert.True(await TestUtil.WaitUntilAsync(() => consumer.Batches.Count == 1));
+        Assert.Equal(2, consumer.Batches[0].Resync?.Count);
+    }
+
     [Theory]
     [InlineData(SessionChangeKind.Updated, SessionChangeKind.Added, SessionChangeKind.Added)]
     [InlineData(SessionChangeKind.Ended, SessionChangeKind.Updated, SessionChangeKind.Ended)]
