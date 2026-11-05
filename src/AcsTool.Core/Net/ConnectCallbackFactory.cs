@@ -54,7 +54,7 @@ public static class ConnectCallbackFactory
                 try
                 {
                     await socket.ConnectAsync(new IPEndPoint(address, port), timeoutCts.Token).ConfigureAwait(false);
-                    tracker.MarkConnected(connectSw.Elapsed, socket.RemoteEndPoint as IPEndPoint);
+                    tracker.MarkConnected(connectSw.Elapsed, socket.RemoteEndPoint as IPEndPoint, socket.LocalEndPoint as IPEndPoint);
                     return new NetworkStream(socket, ownsSocket: true);
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)

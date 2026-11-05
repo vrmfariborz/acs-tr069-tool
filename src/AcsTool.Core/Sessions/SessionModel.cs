@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Net;
 using AcsTool.Core.Cwmp;
 using AcsTool.Core.Model;
 using AcsTool.Core.Net;
@@ -51,6 +52,38 @@ public sealed record ExchangeRecord(int Seq, HttpMessageCapture Request, Message
     ExchangeTimings Timings, IReadOnlyList<string> Notes)
 {
     public bool IsPending => Response is null && Error is null;
+
+    /// <summary>Transport endpoints of this exchange (PT0.3, design §6.2); null until the producer reports them.</summary>
+    public ExchangeEndpoints? Endpoints { get; init; }
+}
+
+/// <summary>
+/// The TCP endpoints an exchange travelled over, used to correlate captured packets with exchanges (design §6.2, §6.3).
+/// Downstream is CPE → proxy (proxy only); upstream is proxy/simulator → ACS. IPv4-mapped IPv6 addresses are normalised to IPv4.
+/// </summary>
+/// <param name="DownstreamConnectionId">Kestrel connection id (proxy only).</param>
+/// <param name="DownstreamRemote">CPE ip:port as seen by the proxy.</param>
+/// <param name="DownstreamLocal">Proxy ip:port the CPE connected to.</param>
+/// <param name="UpstreamLocal">Ephemeral local ip:port of the socket to the ACS.</param>
+/// <param name="UpstreamRemote">ACS ip:port actually connected (or the HTTP proxy's, when one is used).</param>
+/// <param name="UpstreamConnectionSerial">Per-session upstream connection-attempt number: unique and increasing per session; pooled
+/// reuse keeps it, each new connect attempt increments it, so failed attempts leave gaps.</param>
+public sealed record ExchangeEndpoints(
+    string? DownstreamConnectionId,
+    IPEndPoint? DownstreamRemote,
+    IPEndPoint? DownstreamLocal,
+    IPEndPoint? UpstreamLocal,
+    IPEndPoint? UpstreamRemote,
+    long? UpstreamConnectionSerial)
+{
+    /// <summary>Returns a copy with every endpoint normalised (IPv4-mapped IPv6 → IPv4).</summary>
+    public ExchangeEndpoints Normalized() => this with
+    {
+        DownstreamRemote = EndPointUtil.Normalize(DownstreamRemote),
+        DownstreamLocal = EndPointUtil.Normalize(DownstreamLocal),
+        UpstreamLocal = EndPointUtil.Normalize(UpstreamLocal),
+        UpstreamRemote = EndPointUtil.Normalize(UpstreamRemote),
+    };
 }
 
 public sealed record SessionStart(SessionSource Source, string ClientEndpoint, string TargetUrl,
@@ -87,6 +120,14 @@ public interface ISessionSink
     void UpdateSession(Guid sessionId, Func<SessionSnapshot, SessionSnapshot> patch);
 
     void EndSession(Guid sessionId, SessionOutcome outcome);
+
+    /// <summary>
+    /// Attaches transport endpoints to an exchange (PT0.3). The default is a no-op so existing sinks and test fakes keep compiling;
+    /// unknown sessions or sequence numbers are ignored.
+    /// </summary>
+    void SetExchangeEndpoints(Guid sessionId, int seq, ExchangeEndpoints endpoints)
+    {
+    }
 }
 
 /// <summary>Consumer side of the store.</summary>
