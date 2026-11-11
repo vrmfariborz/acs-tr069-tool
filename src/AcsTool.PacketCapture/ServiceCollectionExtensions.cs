@@ -7,7 +7,7 @@ namespace AcsTool.PacketCapture;
 public static class PacketCaptureServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the packet-capture services (PT0.2 skeleton: only the backend). Registration and resolution load no native
+    /// Registers the packet-capture services (PT1.1: <see cref="ICaptureBackend"/>). Registration and resolution load no native
     /// code; the backend is probed lazily when capture is first needed (design §5.2/§5.4).
     /// </summary>
     public static IServiceCollection AddAcsToolPacketCapture(this IServiceCollection services)

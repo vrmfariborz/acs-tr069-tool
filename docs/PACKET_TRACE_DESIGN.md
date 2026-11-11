@@ -181,7 +181,7 @@ public interface ICaptureBackend
 {
     CaptureBackendInfo Probe();                               // never throws
     IReadOnlyList<CaptureDeviceInfo> ListDevices();           // throws CaptureOpenException with a user-facing message
-    ICaptureSession Open(CaptureDeviceInfo device, CaptureOpenOptions options); // snaplen, promiscuous, kernel buffer, BPF, read timeout
+    ICaptureSession Open(CaptureDeviceInfo device, CaptureOpenOptions options); // snaplen, promiscuous, kernel buffer, BPF, read timeout, ns pref, InterfaceId (PCAPNG IDB index; 0 = backend picks)
 }
 public interface ICaptureSession : IDisposable
 {
