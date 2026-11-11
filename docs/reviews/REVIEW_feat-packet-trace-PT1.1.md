@@ -103,3 +103,74 @@
 - `ACSTOOL_PCAP_LIVE=1`: not run — this box has no libpcap and no root/CAP_NET_RAW (would need installing packages and raising privileges). Live open/start/stop,
   bad-filter text, AccessDenied on open, real Stop timing (M1/m4 shown via harness + SharpPcap source), kernel buffer / ns timestamp acceptance.
 - Npcap behaviour (Windows device names, NPF_Loopback DLT_NULL, admin-only Npcap) — covered only by CI "not installed" path.
+
+---
+
+## Re-review 1: 03e3143 (diff 5d747b9..03e3143)
+
+- Reviewer: ReviewerBot, Thu 2026-11-05 ~10:40–10:57 EST. Private clone `/tmp/rv-pt` detached at 03e3143; shared checkout not touched; no servers.
+- One commit `03e3143 fix(packet-capture): PT1.1 review fixes (M1 lock-free capture callback, m1-m5, n1-n3)`, 13 files, +840/-65.
+
+### Verdict: OK TO MERGE (1 Minor recommended, non-blocking; 4 Nits)
+
+### CI (verified with gh)
+- Run 42056521364: **success**, head `03e31436bdfd…`, branch `feat/packet-trace-pt1`, 10:35–10:37 EST; jobs linux ✔, windows ✔.
+
+### Local run (box: no libpcap, uid 1000)
+- `CI=true` Release build: 0 warnings, 0 errors.
+- Full suite (Perf excluded): Core 348+2s, Proxy 108, Simulator 101, Presentation 63, PacketCapture 102+3s = **722 passed, 5 skipped, 0 failed**.
+- PacketCapture.Tests x30: **30/30** green.
+- Coverage of changed src lines: whole PT1.1 (e490f2f..03e3143) **263/298 = 88 %** (was 33 %): SharpPcapCaptureSession 80/87, SharpPcapBackend 86/107
+  (misses: real `ListDevices`/`FindDevice`/`CountLiveDevices` native paths, some `ToInfo` fallbacks), DeviceSelector 67/71. Fix delta (5d747b9..03e3143): 51/52.
+- Mutations (27 = first review's 19 + 8 new): **22 killed, 5 survived**. Of the original 19: **16 killed** (was 8).
+  New kills: v-host:port, bracketed IPv6, loopback bind (m2), copy, Start idempotence, epoch, original length, `isUp`, plus M1 revert, m1 revert,
+  m4 revert, n2 counter, fake ReadCounters ODE, fake unknown device. Survivors: see n-r1…n-r4 below.
+
+### M1: fixed
+- `SharpPcapCaptureSession.cs:149` reads the delegate with `Volatile.Read`; `ReadCounters` (`:74-92`) takes no lock; `_lifecycle` is only taken by
+  Start/Stop/Dispose (`:38`, `:66`, `:96`). Grep confirms no other `lock` in the class. StopCore clears the delegate, then `StopCapture`, then detaches (`:129-144`).
+- Holding `_lifecycle` across `StopCapture` is OK: the capture thread never takes it on its own, so an external Stop/Dispose can't deadlock with it,
+  and it does serialise a concurrent Start (scratch F: Stop‖Start → first loop exited, one loop running, StartCalls=2).
+- Re-entrancy (scratch tests with the committed `TestLiveDevice`, StopCaptureTimeout 750 ms, busy link):
+  - A callback calling `ReadCounters` every frame + external Stop: Stop 0.6 ms, joined, thread dead, 0 failures.
+  - B callback calls `Stop()`: no deadlock, no exception; **Stop takes 750 ms** (the capture thread waits on itself), not joined (can't be); thread exits afterwards; 0 frames after.
+  - C callback calls `Dispose()`: same, 750 ms, device closed, thread exits.
+  - D/E external Stop/Dispose racing a callback that calls Stop/Dispose: external call **750 ms** (capture thread now blocks on `_lifecycle` inside the
+    re-entrant call, so the join times out), callback call ~730 ms; both complete, thread exits. Bounded by StopCaptureTimeout → no deadlock.
+  - Real SharpPcap behaves the same (its `StopCapture` is `Task.WaitAny(captureThread, timeout)`; `Close()` from inside the callback is safe because the loop holds a
+    `DangerousAddRef` on the handle).
+- Regression tests (`SharpPcapCaptureSessionTests.cs:26-89`): with the fix reverted (callback takes `lock(_lifecycle)`), the suite failed **9/9 runs**; per test
+  `Stop_Then_Start_Again_Delivers` 9/9, `Dispose_UnderTraffic_…` 7/9, `Stop_UnderTraffic_…` 7/9 (the capture thread sometimes sees the cancel before it blocks). Restored → green.
+- Earlier timing harness (my SimLiveDevice, 200 ms SharpPcap-style timeout): busy Stop **0.1 ms** (was 200.2 ms), thread dead after Stop (was alive),
+  busy Dispose 0.1 ms (was 200.2), 0 callbacks after Stop; idle 0.8/1.0 ms.
+
+### m1–m5, n1–n3: fixed
+- m1 `:45-58` detaches + clears + wraps as `CaptureOpenException(Error)`; test kills the revert.
+- m2 `DeviceSelector.cs:35-41` loopback bind (incl. `::ffff:127.0.0.1`) selects loopback devices; tests for 127.0.0.1/::1/mapped, dedupe with local upstream.
+- m3 native-free seam (`TestLiveDevice`, internal `SharpPcapBackend(…, findDevice)` typed `Func<string, object?>` so the default ctor still names no SharpPcap type —
+  LOAD1 positive control still kills both Presentation smoke tests); `ToUtcTicks` rows; selector rows; fake join asserted.
+- m4 `SharpPcapBackend.cs:113` `StopCaptureTimeout = max(2×ReadTimeout, 750 ms)`; tested.
+- m5 Landed note in `PACKET_TRACE_TASKS.md:136-140`, `IMPLEMENTATION_NOTES.md` §"Capture backend", §5.2 `InterfaceId` comment, PT-1 comment fixed.
+- n1 `SharpPcapBackend.cs:170-173`, n2 `CallbackFailures`, n3 fake fidelity (ReadCounters ODE, unknown device, live counters, lock-free feeder).
+- n4–n6 deferred and documented in `IMPLEMENTATION_NOTES.md` ("Skipped: n4 … n5 … n6"): acceptable.
+
+### Findings
+- **r1-m1 (Minor, non-blocking) Re-entrant Stop/Dispose from `onFrame` is undocumented and costs a full StopCaptureTimeout.**
+  `ICaptureSession.cs:13-17` still says Stop "joins the capture thread"; from the callback it can't, and it stalls the capture thread (and any concurrent external Stop) for 750 ms.
+  Fix: document "`onFrame` must not call Stop/Dispose" on `ICaptureSession.Start`, or guard it: a `[ThreadStatic] bool t_inCallback` set around the consumer call in
+  `OnPacketArrival`, and in `StopCore` when it's set only clear the delegate and queue the `StopCapture` to the thread pool (or throw `InvalidOperationException`).
+- **n-r1** `SharpPcapBackend.cs:170-173`: the `PcapError` code check is unobservable — `PcapException(msg, error)` always appends "(Error Code: PermissionDenied)",
+  which the text fallback matches, so removing the code check survives. Harmless; note it or test with a `Generic` error whose text lacks "permission".
+- **n-r2** `SharpPcapCaptureSession.cs:131`: removing "clear the delegate first" survives (it only matters when the join times out). A test with a wedged thread
+  (StopCaptureTimeout small, callback blocking) would pin it.
+- **n-r3** `FakeCaptureBackend.cs` Stop: `joined = true` survives; `LastStopJoined` can't fail while Feed honours `_stop`. Assert `!thread.IsAlive` instead (expose the thread or an "exited" flag).
+- **n-r4** M1 regression tests catch the revert per test only ~80 % (the suite always fails); to make a single test deterministic, have the callback signal and wait briefly so Stop
+  provably starts while a callback is in flight. `DeviceSelector.cs:105` mapped-device-address branch (DS4) still unpinned.
+
+### Not verified on Linux
+- Unchanged from the first review: `ACSTOOL_PCAP_LIVE=1` not run (no libpcap, no root/CAP_NET_RAW); real-device Stop timing, AccessDenied, kernel buffer/ns acceptance,
+  Npcap on Windows. Re-entrancy results are from `TestLiveDevice` + SharpPcap 6.3.1 source.
+
+### Disposition (author, before merge)
+- r1-m1: documented in `ICaptureSession` xmldoc (`Start` remarks + `Stop` summary): `onFrame` must not call `Stop`/`Dispose`. No guard added.
+- n-r1..n-r4: deferred to a later test-hardening pass (noted in IMPLEMENTATION_NOTES PT1.1).
