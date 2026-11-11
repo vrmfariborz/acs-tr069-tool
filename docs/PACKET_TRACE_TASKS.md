@@ -150,6 +150,12 @@ If time is short, **PT1.13 and the PCAP/PCAPNG reader half of PT1.2 may move to 
 - **Acceptance:** Round-trip write→read preserves frames, 100 ns timestamps, interface ids, link types, comments; µs/ns and
   both endiannesses read; unknown block skipped; truncated last block reported with earlier frames returned; optional
   `capinfos`/`tshark` validation when on PATH.
+- **Landed (on `feat/packet-trace-pt1.2`, not merged yet):** writer and reader both, so nothing moves to PT1b. `PcapngWriter` (SHB with `shb_userappl`/`shb_os`,
+  one IDB per interface with `if_name`/`if_description`/`if_filter`/`if_tsresol`=7, EPB + `opt_comment`), `PcapWriter` (ns default, µs
+  option), `PcapReader` (µs/ns, LE/BE), `PcapngReader` (multi-section, IDB options incl. `if_tsoffset`, EPB/SPB/OPB, unknown blocks
+  skipped, comments), `CaptureFileReader.ReadAll` with the D8 budget, and `CaptureFileException` with block offset. Fixtures from
+  `tests/fixtures/pcap/make_fixtures.py` (struct-packed golden files plus scapy-made files). Still open: the Wireshark-made and
+  `tcpdump` ns fixtures (no such tools in the sandbox; PT0.1 left none) and a `capinfos` run (the test skips without it). Details in `IMPLEMENTATION_NOTES.md`.
 
 ### PT1.3 Frame decoder + protocol tree — M
 - **Description:** `FrameDecoder.Summarize` → `FrameSummary` (PacketDotNet; Ethernet/Null/Loop/Raw/LinuxSll/LinuxSll2; IPv4/IPv6/

@@ -16,6 +16,9 @@
     <ProjectReference Include="..\AcsTool.Testing\AcsTool.Testing.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="..\fixtures\pcap\**" Exclude="..\fixtures\pcap\*.py" LinkBase="fixtures\pcap" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>
